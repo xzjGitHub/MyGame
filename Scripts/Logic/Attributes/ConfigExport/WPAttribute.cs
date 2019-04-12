@@ -1,0 +1,47 @@
+using System;
+using System.Text.RegularExpressions;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+
+
+
+/// <summary>
+/// WPAttribute
+/// </summary>
+public partial class WPAttribute
+{
+    /// <summary>
+    /// 路点模板
+    /// </summary>
+    public WP_template wp_template;
+    /// <summary>
+    /// 队伍属性
+    /// </summary>
+    public TeamAttribute teamAttribute;
+    /// <summary>
+    /// 地图属性
+    /// </summary>
+    public Map_template map_template;
+    /// <summary>
+    /// 战斗奖励
+    /// </summary>
+    public float addCombatRewardLevel
+    {
+        get
+        {
+            return (float)teamAttribute.addCombatReward;
+        }
+    }
+    /// <summary>
+    /// 路点等级
+    /// </summary>
+    public int finalWPLevel
+    {
+        get
+        {
+            return (int)map_template.baseWPLevel;
+        }
+    }
+
+}

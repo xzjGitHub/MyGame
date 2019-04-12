@@ -1,0 +1,148 @@
+﻿using System.Collections.Generic;
+using Spine.Unity;
+using UnityEngine;
+
+/// <summary>
+/// 界面播放特效数据
+/// </summary>
+public class EffectInfo
+{
+    public SkeletonAnimation SkeletonAn { get { return skeletonAnimation; } }
+    //
+    /// <summary>
+    /// 特效名字
+    /// </summary>
+    public string effectName;
+    /// <summary>
+    /// 是否循环
+    /// </summary>
+    public bool isLoop = false;
+    /// <summary>
+    /// 是否移动
+    /// </summary>
+    public bool isMove = false;
+    /// <summary>
+    /// 移动类型
+    /// </summary>
+    public EffectMoveType moveType = EffectMoveType.Teleportation;
+    /// <summary>
+    /// 结束位置
+    /// </summary>
+    public Vector3 endLocalPos = Vector3.zero;
+    /// <summary>
+    ///开始位置
+    /// </summary>
+    public Vector3 startWorldPos = Vector3.zero;
+    public Transform carrier;
+    public List<float> CSYS = new List<float>();
+    public float localScale;
+    public  int DefaultWaitFPS
+    {
+        get { return 3; }
+    }
+    public int sortingOrde;
+
+    public EffectPlayType effectPlayType;
+
+    public string sortingLayer = "char";
+    public float moveSpeed = 60f;
+
+    public int waitFPS;
+    /// <summary>
+    /// 构造函数
+    /// </summary>
+    /// <param name="RP_Name">资源包名</param>
+    /// <param name="effectName">特效名字</param>
+    /// <param name="carrier">父节点</param>
+    public EffectInfo(string RP_Name, string effectName, Transform carrier, int sortingOrde, object startWorldPos = null, bool isLoop = false, List<float> CSYS = null)
+    {
+        this.carrier = carrier;
+        this.RP_Name = RP_Name;
+        this.effectName = effectName;
+        skeletonAnimation = LoadRes(this.RP_Name, this.carrier);
+        this.sortingOrde = sortingOrde;
+        if (startWorldPos != null)
+        {
+            this.startWorldPos = (Vector3)startWorldPos;
+         
+        }
+        if (skeletonAnimation != null)
+        {
+            skeletonAnimation.ClearState();
+            skeletonAnimation.transform.position = this.startWorldPos;
+        }
+        this.isLoop = isLoop;
+        if (carrier != null)
+        {
+            localScale = carrier.localScale.x;
+        }
+        if (CSYS != null)
+        {
+            this.CSYS = CSYS;
+        }
+    }
+
+    /// <summary>
+    /// 位置修正
+    /// </summary>
+    /// <param name="pos"></param>
+    public Vector3 PosAmend(Vector3 pos)
+    {
+        return GameTools.AmendVector(GameTools.WorldToLocalPoint(pos, carrier), CSYS, localScale,true);
+    }
+
+    public void AddLayer(int value)
+    {
+        if (skeletonAnimation==null)
+        {
+            return;
+        }
+
+        Renderer renderer = GameTools.GetObjRenderer(skeletonAnimation.gameObject);
+        if (renderer==null)
+        {
+            return;
+        }
+        renderer.sortingOrder += value;
+    }
+
+    /// <summary>
+    /// 加载资源
+    /// </summary>
+    /// <param name="_RP_Name"></param>
+    /// <param name="_transform"></param>
+    /// <returns></returns>
+    private SkeletonAnimation LoadRes(string _RP_Name, Transform _transform)
+    {
+        GameObject _temp = ResourceLoadUtil.LoadSkillEffect(_RP_Name, _transform);
+
+        if (_temp == null)
+        {
+            LogHelperLSK.LogWarning("RP_Name=" + RP_Name + "未加载成功");
+        }
+        return _temp != null ? _temp.GetComponent<SkeletonAnimation>() : null;
+    }
+    //
+    private readonly string RP_Name;
+    private SkeletonAnimation skeletonAnimation;
+}
+
+
+/// <summary>
+/// 移动类型
+/// </summary>
+public enum EffectMoveType
+{
+    /// <summary>
+    /// 瞬间移动
+    /// </summary>
+    Teleportation = 0,
+    /// <summary>
+    /// 直线
+    /// </summary>
+    Line = 1,
+    /// <summary>
+    /// 抛物线
+    /// </summary>
+    Parabola = 2,
+}

@@ -1,0 +1,122 @@
+﻿using Barrack.Data;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace Altar.View
+{
+    public class ItemCallInfo: MonoBehaviour
+    {
+        private GameObject m_prefab;
+        private GameObject m_notCall;
+        private Transform m_parent;
+        private GameObject m_select;
+        private Image m_headIcon;
+        private Text m_nanaCost;
+        private Text m_goldCost;
+
+        private List<int> m_needList = new List<int>();
+        private Dictionary<int,ItemCost> m_costInfo = new Dictionary<int,ItemCost>();
+
+        private bool m_hasInit;
+
+        private Action<int> m_clickCallBack;
+        private int m_id;
+
+        private void InitComponent()
+        {
+            m_prefab = transform.Find("NotCall/Grid/Item").gameObject;
+            m_prefab.SetActive(false);
+            m_notCall = transform.Find("Info/NotCall").gameObject;
+            m_notCall.SetActive(false);
+            m_select = transform.Find("Select").gameObject;
+            m_select.SetActive(false);
+            m_parent = transform.Find("NotCall/Grid");
+            m_headIcon = transform.Find("Info/Icon").GetComponent<Image>();
+            m_nanaCost = transform.Find("NotCall/GoldCost/Num").GetComponent<Text>();
+            m_goldCost = transform.Find("NotCall/ManaCost/Num").GetComponent<Text>();
+
+            Utility.AddButtonListener(transform.Find("Btn"),Click);
+        }
+
+        public void InitInfo(Summon_remains summon,Action<int> clickCall)
+        {
+            m_clickCallBack = clickCall;
+            m_id = summon.formulaID;
+
+            if(!m_hasInit)
+            {
+                InitComponent();
+                m_hasInit = true;
+            }
+
+            InitCharInfo(summon.formulaID);
+            InitItemCost(summon.formulaID);
+            InitCost(summon.formulaID);
+
+            UpdateNotCallShow(!BarrackSystem.Instance.HasFuHo(summon.formulaID));
+        }
+
+        private void InitCharInfo(int itemInstanceId)
+        {
+            CharAttribute m_attr = ControllerCenter.Instance.AltarController.GetChar(itemInstanceId);
+            Char_template char_Template = Char_templateConfig.GetTemplate(m_attr.templateID);
+            m_headIcon.sprite = ResourceLoadUtil.LoadSprite(ResourceType.CharHeadIcon,char_Template.HeadIcon);
+        }
+
+        private void InitItemCost(int id)
+        {
+            m_needList.Clear();
+            m_costInfo.Clear();
+            Summon_remains summon_Remains = Summon_remainsConfig.GetSummon_Remains(id);
+            List<List<int>> cost = summon_Remains.summonFormula;
+            for(int i = 0; i < cost.Count; i++)
+            {
+                GameObject obj = GameObjectPool.Instance.GetObject(StringDefine.ObjectPooItemKey.ItemCallCharItem,m_prefab);
+                Utility.SetParent(obj,m_parent);
+
+                ItemCost costInfo = Utility.RequireComponent<ItemCost>(obj);
+                costInfo.InitComponent();
+                costInfo.InitByTemplateId(cost[i][0],cost[i][1]);
+
+                m_costInfo[cost[i][0]] = costInfo;
+
+                m_needList.Add(cost[i][1]);
+            }
+        }
+
+        private void InitCost(int id)
+        {
+            Summon_remains summon_Remains = Summon_remainsConfig.GetSummon_Remains(id);
+            m_goldCost.text = summon_Remains.goldCost.ToString();
+            m_nanaCost.text = summon_Remains.manaCost.ToString();
+        }
+
+        public void UpdateItemCostInfo()
+        {
+            List<int> keys = new List<int>();
+            keys.AddRange(m_costInfo.Keys);
+            for(int i = 0; i < keys.Count; i++)
+            {
+                m_costInfo[keys[i]].InitByTemplateId(keys[i],m_needList[i]);
+            }
+        }
+
+        public void UpdateSlectShow(bool show)
+        {
+            m_select.SetActive(show);
+        }
+
+        public void UpdateNotCallShow(bool show)
+        {
+            m_notCall.SetActive(show);
+        }
+
+        public void Click()
+        {
+            if(m_clickCallBack != null)
+                m_clickCallBack(m_id);
+        }
+    }
+}

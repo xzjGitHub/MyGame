@@ -1,0 +1,554 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using GameEventDispose;
+using ProtoBuf;
+
+/// <summary>
+/// 周期入侵系统 
+/// </summary>
+public class CycleInvasionSystem : ScriptBase
+{
+    private static CycleInvasionSystem instance;
+    public static CycleInvasionSystem Instance { get { return instance; } }
+    //
+
+    public CycleInvasionSystem() { instance = this; }
+
+    public float NowProgress { get { return baseThreat / threatReq; } }
+
+    public int SelectNpcTeamId { get { return cycleInvasionData.selectNpcTeamId; } }
+
+    /// <summary>
+    /// 预警开始时间
+    /// </summary>
+    public float WarningStartTime { get { return cycleInvasionData.warningStartTime; } }
+
+    /// <summary>
+    /// 预警时间
+    /// </summary>
+    public float WarningTime { get { return cycleInvasionData.warningTime; } }
+
+    public float WarningMaxTime { get { return cycleInvasionData.warningTime + cycleInvasionData.warningStartTime; } }
+
+    public List<InvasionMobTeam> InvasionMobTeams { get { return cycleInvasionData.invasionMobTeams; } }
+
+    public CycleInvasionPhase InvasionPhase { get { return (CycleInvasionPhase)cycleInvasionData.cycleInvasionPhase; } }
+
+    /// <summary>
+    /// 是否周期入侵中
+    /// </summary>
+    public bool IsCycleInvasioning { get { return isCycleInvasioning; } }
+
+
+    /// <summary>
+    /// 选择Npc队伍
+    /// </summary>
+    /// <param name="_teamId"></param>
+    public void SelectNpcTeam(int _teamId)
+    {
+        cycleInvasionData.selectNpcTeamId = _teamId;
+    }
+
+    /// <summary>
+    /// 开始主动攻击
+    /// </summary>
+    public void StartActiveAttack()
+    {
+        EventDispatcher.Instance.CombatEvent.AddEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatEvent);
+        combatSystem = new CombatSystem();
+        var _playCombatTeamInfo = new CombatTeamInfo(0, TeamType.Player, TeamSystem.Instance.TeamAttribute.combatUnits);
+        var _enemyCombatTeamInfo = new CombatTeamInfo(1, TeamType.Enemy, cycleInvasionData.invasionMobTeams.Find(a => a.teamId == cycleInvasionData.selectNpcTeamId).combatUnits);
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, CombatStage.CreateCombat,
+            (object)new CombatTeamInfo[] { _playCombatTeamInfo, _enemyCombatTeamInfo });
+    }
+
+    /// <summary>
+    /// 获得入侵怪物信息
+    /// </summary>
+    public InvasionMobTeam GetInvasionMobTeamInfo(int _teamId)
+    {
+        return InvasionMobTeams.Find(a => a.teamId == _teamId);
+    }
+
+    /// <summary>
+    /// 获得入侵怪物信息
+    /// </summary>
+    public CombatUnit GetInvasionMobUnitInfo(int _teamId, int _charId)
+    {
+        return InvasionMobTeams.Find(a => a.teamId == _teamId).combatUnits.Find(b => b.charAttribute.charID == _charId);
+    }
+
+    /// <summary>
+    /// 创造新的周期性入侵
+    /// </summary>
+    private void CreateNewCycleInvasion()
+    {
+        if (baseThreat < threatReq || isCycleInvasioning) return;
+        //
+        LogHelperLSK.LogWarning("开始创建入侵");
+        //新建周期入侵
+        isCycleInvasioning = StartCerateInvasion();
+    }
+    /// <summary>
+    /// 开始创建入侵
+    /// </summary>
+    private bool StartCerateInvasion()
+    {
+        baseThreat -= threatReq;
+        threatReq = InitThreatReq();
+        //排序
+        factionThreats = factionThreats.OrderBy(a => a.Value).ThenBy(a => a.Key).ToDictionary(a => a.Key, b => b.Value);
+        int threatType = factionThreats.Last().Key;
+        //重置威胁
+        for (int i = 1; i <= factionThreats.Keys.Count; i++)
+        {
+            if (threatType != (int)ThreatType.GuShen && i == (int)ThreatType.GuShen) continue;
+            factionThreats[i] = 0;
+        }
+        //获得入侵ID
+        var invasionSetID = RandomBuilder.RandomList(1, zone.ZoneTemplate.invasionSetList)[0];
+        invasionTemplate = Invasion_templateConfig.GetInvasionTemplate(invasionSetID);
+        if (invasionTemplate == null)
+        {
+            LogHelperLSK.LogWarning("invasionTemplate == null");
+            return false;
+        }
+        //更新入侵信息
+        cycleInvasionData = new CycleInvasionData
+        {
+            siegeTime = Game_configConfig.GetGame_Config().siegeTime,
+            preTime = RandomBuilder.RandomNum(invasionTemplate.preTime[1], invasionTemplate.preTime[0]),
+            warningTime = RandomBuilder.RandomNum(invasionTemplate.warningTime[1], invasionTemplate.warningTime[0]),
+        };
+        LogHelperLSK.LogWarning("preTime=" + cycleInvasionData.preTime);
+        LogHelperLSK.LogWarning("warningTime=" + cycleInvasionData.warningTime);
+        //更新怪物
+        foreach (var item in invasionTemplate.mobTeamList)
+        {
+            mobMobteam = Mob_mobteamConfig.GetMobMobteam(item);
+            if (mobMobteam == null) continue;
+            cycleInvasionData.invasionMobTeams.Add(new InvasionMobTeam(item));
+        }
+        //更新每个队伍的主队伍
+        foreach (var item in cycleInvasionData.invasionMobTeams)
+        {
+            var mobteam = Mob_mobteamConfig.GetMobMobteam(item.teamId);
+            if (mobteam == null) continue;
+            foreach (var block in mobteam.blockList)
+            {
+                var team = cycleInvasionData.invasionMobTeams.Find(a => a.teamId == block);
+                if (team == null) continue;
+                team.AddMainTeam(item.teamId);
+            }
+        }
+        //
+        cycleInvasionData.cycleInvasionPhase = (int)CycleInvasionPhase.Preposition;
+        cycleInvasionData.preStartTime = TimeUtil.GetPlayDays();
+        EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.Preposition, (object)CycleInvasionPhase.Preposition);
+        lastCycleInvasionDay = TimeUtil.GetPlayDays();
+        return true;
+    }
+
+    /// <summary>
+    /// 初始化威胁需求值
+    /// </summary>
+    private int InitThreatReq()
+    {
+        var threatReq = invasion_Config.threatReq;
+        threatReq = (int)RandomBuilder.RandomNum(threatReq * (1 + invasion_Config.deviation), threatReq * (1 - invasion_Config.deviation));
+        return threatReq;
+    }
+
+    /// <summary>
+    /// 围攻结算
+    /// </summary>
+    private void SiegeClearing()
+    {
+        LogHelperLSK.LogWarning("CurrentHp=" + TownhalSystem.Instance.CurrentHp);
+        //角色结算
+        CharSystem.Instance.ClearCombatRestStatus();
+        //敌方结算
+        foreach (var item in cycleInvasionData.invasionMobTeams)
+        {
+            //恢复生命值
+            item.RecoveryHp();
+            //没有被打败减少大厅生命值
+            if (item.isDefeat) continue;
+            TownhalSystem.Instance.LossCurrentHp((int)item.coreDamage);
+        }
+        LogHelperLSK.LogWarning("CurrentHp=" + TownhalSystem.Instance.CurrentHp);
+    }
+    /// <summary>
+    /// 添加基础威胁值
+    /// </summary>
+    /// <param name="value"></param>
+    private void AddBaseThreat(int value)
+    {
+        baseThreat += value;
+        if (!isCycleInvasioning)
+        {
+            EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.BeforeStarting, (object)GetShowPhase(NowProgress * 100));
+        }
+        CreateNewCycleInvasion();
+    }
+    /// <summary>
+    /// 添加类别威胁值
+    /// </summary>
+    /// <param name="threatType"></param>
+    /// <param name="value"></param>
+    private void AddFactionThreat(int threatType, int value)
+    {
+        if (factionThreats.ContainsKey(threatType)) factionThreats[threatType] += value;
+    }
+    /// <summary>
+    /// 是否全部死亡
+    /// </summary>
+    /// <returns></returns>
+    private bool IsAllDie()
+    {
+        return !cycleInvasionData.invasionMobTeams.Any(_mobTeam => _mobTeam.combatUnits.Any(_info => _info.hp > 0));
+    }
+
+    private void InitFactionThreats()
+    {
+        for (int i = 1; i <= 8; i++)
+        {
+            factionThreats.Add(i, 1);
+        }
+    }
+
+    private InvasionShowType GetShowPhase(float value)
+    {
+        var showType = InvasionShowType.Nul;
+
+        if (value >= 100)
+        {
+            showType = InvasionShowType.Phase4;
+        }
+        else if (value >= 80)
+        {
+            showType = InvasionShowType.Phase3;
+        }
+        else if (value >= 50)
+        {
+            showType = InvasionShowType.Phase2;
+        }
+        else
+        {
+            showType = InvasionShowType.Phase1;
+        }
+        return showType;
+    }
+
+    /// <summary>
+    /// 剧本时间更新事件
+    /// </summary>
+    /// <param name="arg1"></param>
+    /// <param name="arg2"></param>
+    private void OnScriptTimeUpdateEvent(ScriptTimeUpdateType arg1, object arg2)
+    {
+        if (arg1 != ScriptTimeUpdateType.Day) return;
+        //日期为1日时添加基础威胁值
+        if (TimeUtil.NowDayNum == 1 && (int)scriptInitMonth != TimeUtil.NowMonthNum) AddBaseThreat(invasion_Config.baseThreat);
+        //没有入侵
+        if (!isCycleInvasioning) return;
+        switch ((CycleInvasionPhase)cycleInvasionData.cycleInvasionPhase)
+        {
+            case CycleInvasionPhase.Idle:
+                break;
+            case CycleInvasionPhase.Preposition:
+                if (arg2 != null && Math.Abs((float)arg2 - cycleInvasionData.preStartTime - cycleInvasionData.preTime) < 0.1f)
+                {
+                    cycleInvasionData.warningStartTime = (float)arg2;
+                    cycleInvasionData.cycleInvasionPhase = (int)CycleInvasionPhase.Warning;
+                    EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.Warning, (object)CycleInvasionPhase.Warning);
+                    LogHelperLSK.LogWarning("开始预警");
+                }
+                break;
+            case CycleInvasionPhase.Warning:
+                EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.Updateing, (object)((float)arg2 - cycleInvasionData.warningStartTime));
+                if (arg2 != null && Math.Abs((float)arg2 - cycleInvasionData.warningStartTime - cycleInvasionData.warningTime) < 0.1f)
+                {
+                    cycleInvasionData.cycleInvasionPhase = (int)CycleInvasionPhase.Siege;
+                    EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.Siege, (object)CycleInvasionPhase.Siege);
+                    cycleInvasionData.siegeStartTime = (float)arg2;
+                    LogHelperLSK.LogWarning("开始围攻");
+                }
+                break;
+            case CycleInvasionPhase.Siege:
+                if (arg2 != null && Math.Abs((float)arg2 - cycleInvasionData.siegeStartTime - cycleInvasionData.siegeTime) < 0.1f)
+                {
+                    cycleInvasionData.cycleInvasionPhase = (int)CycleInvasionPhase.SiegeEnd;
+                    EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.SiegeEnd, (object)CycleInvasionPhase.SiegeEnd);
+                    SiegeClearing();
+                    LogHelperLSK.LogWarning("围攻结算");
+                }
+                break;
+            case CycleInvasionPhase.SiegeEnd:
+                cycleInvasionData.cycleInvasionPhase = (int)CycleInvasionPhase.Siege;
+                EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.Siege, (object)CycleInvasionPhase.Siege);
+                cycleInvasionData.siegeStartTime = (float)arg2;
+                LogHelperLSK.LogWarning("开始围攻");
+                //
+                break;
+        }
+    }
+    /// <summary>
+    /// 战斗事件
+    /// </summary>
+    /// <param name="arg1"></param>
+    /// <param name="arg2"></param>
+    private void OnCombatEvent(PlayCombatStage arg1, object arg2)
+    {
+        switch (arg1)
+        {
+            case PlayCombatStage.CombatEnd:
+                EventDispatcher.Instance.CombatEvent.RemoveEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatEvent);
+                if ((bool)arg2)
+                {
+                    //更新敌方当前状态
+                    cycleInvasionData.invasionMobTeams.Find(a => a.teamId == cycleInvasionData.selectNpcTeamId).SetAllDie();
+                }
+                //更新角色休息状态
+                TeamSystem.Instance.UpdateCharRestState();
+                //
+                if (IsAllDie())
+                {
+                    EventDispatcher.Instance.ScriptTimeEvent.RemoveEventListener<ScriptTimeUpdateType, object>(EventId.ScriptTimeEvent, OnScriptTimeUpdateEvent);
+                    //入侵结束
+                    isCycleInvasioning = false;
+                    EventDispatcher.Instance.InvasionEvent.DispatchEvent(EventId.InvasionEvent, CycleInvasionPhase.InvasionEnd, (object)CycleInvasionPhase.InvasionEnd);
+                }
+                break;
+        }
+    }
+    /// <summary>
+    /// 探索事件
+    /// </summary>
+    private void OnExploreEvent(ExploreEventType arg1, object arg2)
+    {
+        if (arg1 != ExploreEventType.VisitEventEnd) return;
+        var attribute = arg2 as EventAttribute;
+        AddBaseThreat(attribute.event_template.baseThreat);
+        foreach (var item in attribute.event_template.factionThreat)
+        {
+            AddFactionThreat(item[0], item[1]);
+        }
+    }
+
+    /// <summary>
+    /// 初始化
+    /// </summary>
+    public override void Init()
+    {
+        intervalDay = Game_configConfig.GetGame_Config().invasionInterval;
+        resurrectProp = Combat_configConfig.GetCombat_config().resurrectProp;
+        scriptTemplate = Script_templateConfig.GetScript_template(ScriptSystem.Instance.ScriptId);
+        scriptInitMonth = scriptTemplate.initialDate[1];
+        invasion_Config = Invasion_configConfig.GetConfig();
+        //
+        EventDispatcher.Instance.ScriptTimeEvent.AddEventListener<ScriptTimeUpdateType, object>(EventId.ScriptTimeEvent, OnScriptTimeUpdateEvent);
+        EventDispatcher.Instance.ExploreEvent.AddEventListener<ExploreEventType, object>(EventId.ExploreEvent, OnExploreEvent);
+        //
+        if (cycleInvasionSystemData == null)
+        {
+            cycleInvasionSystemData = new CycleInvasionSystemData();
+            isCycleInvasioning = false;
+            lastCycleInvasionDay = -intervalDay;
+            threatReq = InitThreatReq();
+            CreateNewCycleInvasion();
+            InitFactionThreats();
+            return;
+        }
+        isCycleInvasioning = cycleInvasionSystemData.isCycleInvasioning;
+        lastCycleInvasionDay = cycleInvasionSystemData.lastCycleInvasionDay;
+        cycleInvasionData = cycleInvasionSystemData.cycleInvasionData;
+        factionThreats = cycleInvasionData.factionThreats;
+    }
+    /// <summary>
+    /// 存档
+    /// </summary>
+    /// <param name="parentPath"></param>
+    public override void SaveData(string parentPath)
+    {
+        if (cycleInvasionData != null) cycleInvasionData.factionThreats = factionThreats;
+
+        cycleInvasionSystemData.isCycleInvasioning = isCycleInvasioning;
+        cycleInvasionSystemData.lastCycleInvasionDay = lastCycleInvasionDay;
+        cycleInvasionSystemData.cycleInvasionData = cycleInvasionData;
+        //
+        GameDataManager.SaveData(parentPath, CycleInvasionFilePath, cycleInvasionSystemData);
+    }
+    /// <summary>
+    /// 读档
+    /// </summary>
+    /// <param name="parentPath"></param>
+    public override void ReadData(string parentPath)
+    {
+        this.parentPath = parentPath;
+        //剧本存档
+        cycleInvasionSystemData = GameDataManager.ReadData<BountySystemData>(parentPath + CycleInvasionFilePath) as CycleInvasionSystemData;
+    }
+
+    //
+    private int scriptInitMonth = -1;
+    /// <summary>
+    /// 威胁需求
+    /// </summary>
+    private int threatReq;
+    //基础威胁值
+    private int baseThreat;
+    private Dictionary<int, int> factionThreats = new Dictionary<int, int>();
+    //
+    private string parentPath;
+    private const string CycleInvasionFilePath = "CycleInvasionSystemData";
+    /// <summary>
+    /// 周期入侵存档
+    /// </summary>
+    private CycleInvasionData cycleInvasionData;
+    /// <summary>
+    /// 周期入侵存档
+    /// </summary>
+    private CycleInvasionSystemData cycleInvasionSystemData;
+    /// <summary>
+    /// 是否入侵中
+    /// </summary>
+    private bool isCycleInvasioning;
+    /// <summary>
+    /// 上次入侵天
+    /// </summary>
+    private float lastCycleInvasionDay;
+    //
+    private float resurrectProp;
+    //更新周期为：天
+    private float intervalDay;
+    //区域
+    private Zone zone { get { return FortSystem.Instance.NewZone; } }
+    //
+    private Script_template scriptTemplate;
+    private Invasion_invasionset invasionInvasionset;
+    private Invasion_template invasionTemplate;
+    private Invasion_config invasion_Config;
+    private Mob_mobteam mobMobteam;
+    private Char_template charTemplate;
+    private CombatSystem combatSystem;
+}
+
+
+/// <summary>
+/// 入侵队伍
+/// </summary>
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public class InvasionMobTeam
+{
+    /// <summary>
+    /// 队伍ID
+    /// </summary>
+    public int teamId;
+    /// <summary>
+    /// 角色属性列表
+    /// </summary>
+    public List<CombatUnit> combatUnits = new List<CombatUnit>();
+    /// <summary>
+    /// 是否击败
+    /// </summary>
+    public bool isDefeat;
+    /// <summary>
+    /// 
+    /// </summary>
+    public float coreDamage;
+    /// <summary>
+    /// 最终角色经验奖励
+    /// </summary>
+    public float finalCharExpReward;
+    /// <summary>
+    /// 是否可以复活
+    /// </summary>
+    public bool IsRevivable { get { return _isRevivable; } }
+
+    /// <summary>
+    /// 主队伍击败完才能攻击
+    /// </summary>
+    private List<int> mainTeams = new List<int>();
+    /// <summary>
+    /// 是否可以复活
+    /// </summary>
+    private bool _isRevivable;
+    /// <summary>
+    /// 恢复比例
+    /// </summary>
+    private float recoveryProb;
+
+    public InvasionMobTeam(int _id)
+    {
+        var mobteam = Mob_mobteamConfig.GetMobMobteam(_id);
+        //
+        teamId = _id;
+        finalCharExpReward = mobteam.baseCharExpReward;
+        _isRevivable = mobteam.isRevivable == 1;
+        recoveryProb = mobteam.recoveryProb;
+        coreDamage = mobteam.coreDamage;
+        //
+        for (int i = 0; i < mobteam.mobList.Count; i++)
+        {
+            combatUnits.Add(new CombatUnit(new MobAttribute(new CharCreate(mobteam.mobList[i])), i));
+        }
+    }
+
+    /// <summary>
+    /// 恢复生命值
+    /// </summary>
+    public void RecoveryHp()
+    {
+        if (!_isRevivable && IsAllDie()) return;
+        foreach (var combat in combatUnits)
+        {
+            combat.hp = Math.Min((int)(combat.hp + combat.maxHp * recoveryProb), combat.maxHp);
+        }
+    }
+    /// <summary>
+    /// 是否全部死亡
+    /// </summary>
+    private bool IsAllDie()
+    {
+        return !combatUnits.Any(a => a.hp > 0);
+    }
+
+    /// <summary>
+    /// 设置阵亡
+    /// </summary>
+    public void SetAllDie()
+    {
+        isDefeat = true;
+        foreach (var item in combatUnits)
+        {
+            item.hp = 0;
+        }
+    }
+    /// <summary>
+    /// 添加主队伍
+    /// </summary>
+    /// <param name="teamID"></param>
+    public void AddMainTeam(int teamID)
+    {
+        mainTeams.Add(teamID);
+    }
+    /// <summary>
+    /// 是否能挑战
+    /// </summary>
+    /// <returns></returns>
+    public bool IsCanChallenge(List<InvasionMobTeam> teams)
+    {
+        return mainTeams.Select(t => teams.Find(a => a.teamId == t)).Where(temp => temp != null).All(temp => temp.isDefeat);
+    }
+}
+
+public enum InvasionShowType
+{
+    Nul = 0,
+    Phase1 = 1,
+    Phase2 = 2,
+    Phase3 = 3,
+    Phase4 = 4,
+}

@@ -1,0 +1,363 @@
+﻿using System.Collections.Generic;
+using Comomon.EquipList;
+using Comomon.ItemList;
+using UnityEngine;
+using UnityEngine.UI;
+using EventCenter;
+
+namespace Bag
+{
+    public enum BagTag
+    {
+        All,
+        Equip,
+        Mat,
+        MJ,
+        Defult = 100
+    }
+
+    public class BagPanel: UIPanelBehaviour
+    {
+        private Transform m_parent;
+
+        private GameObject m_equip;
+        private GameObject m_item;
+        private GameObject m_sellObj;
+        private GameObject m_unloadObj;
+        private GameObject m_sellItemObj;
+        private GameObject m_sellEquipObj;
+        private GameObject m_currentSelectObj;
+
+        private Text m_price;
+
+        private EquipDetailInfo m_equipDetialInfo;
+        private ItemTipInfo m_itemInfo;
+        private SellItemTip m_sellItemTip;
+        private SellEquipTip m_sellEquipTip;
+
+        private TogGroup m_tog;
+
+        private BagTag m_currentSelect = BagTag.Defult;
+        private ItemAttribute m_currentAttr;
+        private int price;
+
+        private LoopScroller m_loopScroller;
+
+        private List<ItemAttribute> m_list = new List<ItemAttribute>();
+        //scroll以外 没有显示在scroll以外上的
+        public List<GameObject> m_outScrollEquip = new List<GameObject>();
+        public List<GameObject> m_outScrollItem = new List<GameObject>();
+
+        protected override void OnAwake()
+        {
+            m_equip = transform.Find("Left/Equip").gameObject;
+            m_equip.SetActive(false);
+            m_item = transform.Find("Left/Item").gameObject;
+            m_item.SetActive(false);
+            m_sellObj = transform.Find("Left/Sell").gameObject;
+            m_sellObj.SetActive(false);
+            m_unloadObj = transform.Find("Left/Unload").gameObject;
+            m_unloadObj.SetActive(false);
+            m_sellItemObj = transform.Find("SellItemTip").gameObject;
+            m_sellItemObj.SetActive(false);
+            m_sellEquipObj = transform.Find("SellEquipTip").gameObject;
+            m_sellEquipObj.SetActive(false);
+
+            m_sellItemTip = Utility.RequireComponent<SellItemTip>(m_sellItemObj);
+            m_sellItemTip.InitComponent();
+            m_sellEquipTip = Utility.RequireComponent<SellEquipTip>(m_sellEquipObj);
+            m_sellEquipTip.InitComponent();
+
+            m_loopScroller = transform.Find("Right/Scroll").GetComponent<LoopScroller>();
+            m_loopScroller.InitInfo(ItemChangeAction,CreateItemAction,ItemDestroyAction,
+                OutScrollAction,InScrollAction);
+
+            m_price = transform.Find("Left/Sell/Price/Num").GetComponent<Text>();
+
+            m_parent = transform.Find("Right/Scroll/Content");
+            m_tog = transform.Find("Right/Tag").GetComponent<TogGroup>();
+            m_tog.Init(ClickTag);
+
+            Utility.AddButtonListener(transform.Find("Back/Btn"),ClickBackAction);
+            Utility.AddButtonListener(transform.Find("Left/Sell/SellBtn/Bg"),ClickSellBtn);
+            Utility.AddButtonListener(transform.Find("Left/Unload/Bg"),ClickUnloadBtn);
+
+            EventManager.Instance.TriggerEvent(EventSystemType.UI,EventTypeNameDefine.UpdateSepcialCamera,true);
+        }
+
+        protected override void OnHide()
+        {
+            Free();
+            EventManager.Instance.TriggerEvent(EventSystemType.UI,EventTypeNameDefine.UpdateSepcialCamera,false);
+        }
+
+        private void ClickTag(int index)
+        {
+            if(m_currentSelect == (BagTag)index)
+                return;
+            m_currentSelect = (BagTag)index;
+
+            Free();
+
+            switch((BagTag)index)
+            {
+                case BagTag.All:
+                    m_list = ItemSystem.Instance.GetAll();
+                    break;
+                case BagTag.Equip:
+                    m_list = ItemSystem.Instance.GetAllEquip();
+                    break;
+                case BagTag.Mat:
+                    m_list = ItemSystem.Instance.GetMatList();
+                    break;
+                case BagTag.MJ:
+                    m_list = ItemSystem.Instance.GetZaWu();
+                    break;
+            }
+            m_loopScroller.UpdateInfo(m_list.Count);
+            m_item.SetActive(false);
+            m_equip.SetActive(false);
+            m_sellObj.SetActive(false);
+        }
+
+        private void Free()
+        {
+            m_outScrollEquip.Clear();
+            m_outScrollItem.Clear();
+
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.BagEquip);
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.BagItem);
+        }
+
+        private void ItemChangeAction(int index,GameObject obj)
+        {
+            ItemAttribute attr = m_list[index];
+            EquipAttribute equip = attr as EquipAttribute;
+            if(equip != null)
+            {
+                EquipItem equipItem = obj.GetComponent<EquipItem>();
+                equipItem.InitInfo(equip,ClickItem);
+            }
+            else
+            {
+                NewItem newItem = obj.GetComponent<NewItem>();
+                newItem.InitInfo(attr,ClickItem);
+            }
+        }
+
+        private GameObject CreateItemAction(int index)
+        {
+            GameObject temp = null;
+            ItemAttribute attr = m_list[index];
+            EquipAttribute equip = attr as EquipAttribute;
+            if(equip != null)
+            {
+                temp = GameObjectPool.Instance.GetObject(StringDefine.ObjectPooItemKey.BagEquip,
+                    ItemUtil.EquipPrefab);
+                Utility.SetParent(temp,m_parent);
+                Utility.RequireComponent<EquipItem>(temp);
+            }
+            else
+            {
+                temp = GameObjectPool.Instance.GetObject(StringDefine.ObjectPooItemKey.BagItem,
+                    ItemUtil.Item);
+                Utility.SetParent(temp,m_parent);
+                Utility.RequireComponent<NewItem>(temp);
+            }
+
+            return temp;
+        }
+
+        private void ItemDestroyAction(int index,GameObject obj) { }
+
+        private void OutScrollAction(int index,GameObject obj)
+        {
+            ItemAttribute attr = m_list[index];
+            EquipAttribute equip = attr as EquipAttribute;
+            if(equip != null)
+            {
+                m_outScrollEquip.Add(obj);
+            }
+            else
+            {
+                m_outScrollItem.Add(obj);
+            }
+        }
+
+        private GameObject InScrollAction(int index)
+        {
+            GameObject obj = null;
+            ItemAttribute attr = m_list[index];
+            EquipAttribute equip = attr as EquipAttribute;
+            if(equip != null)
+            {
+                if(m_outScrollEquip.Count > 0)
+                {
+                    obj = m_outScrollEquip[0];
+                    m_outScrollEquip.RemoveAt(0);
+                }
+            }
+            else
+            {
+                if(m_outScrollItem.Count > 0)
+                {
+                    obj = m_outScrollItem[0];
+                    m_outScrollItem.RemoveAt(0);
+                }
+            }
+            return obj;
+        }
+
+        private void ClickItem(ItemAttribute attr,GameObject obj)
+        {
+            m_currentAttr = attr;
+            price = SellUtil.GetItemSingalSellPrice(attr);
+
+            UpdateSelect(obj);
+
+            EquipAttribute equip = attr as EquipAttribute;
+            m_equip.SetActive(equip != null);
+            m_item.SetActive(equip == null);
+
+            if(equip != null)
+            {
+                WhenClickEquip(equip);
+            }
+            else
+            {
+                WhenClickItem(attr);
+            }
+        }
+
+        private void WhenClickEquip(EquipAttribute attr)
+        {
+            if(m_equipDetialInfo == null)
+            {
+                GameObject prefab = ResourceLoadUtil.LoadPrefab(StringDefine.PrefabNameDefine.EquipDetialInfo2);
+                Utility.SetParent(prefab,m_equip.transform);
+                m_equipDetialInfo = Utility.RequireComponent<EquipDetailInfo>(prefab);
+            }
+            m_equipDetialInfo.Free();
+            m_equipDetialInfo.InitInfo(attr);
+
+            if(attr.EquipState==EquipState.Wear)
+            {
+                m_sellObj.SetActive(false);
+                m_price.text = price.ToString();
+                m_unloadObj.SetActive(true);
+            }
+            else
+            {
+                m_sellObj.SetActive(true);
+                m_price.text = price.ToString();
+                m_unloadObj.SetActive(false);
+            }
+        }
+
+        private void WhenClickItem(ItemAttribute attr)
+        {
+            if(m_itemInfo == null)
+            {
+                GameObject obj = ResourceLoadUtil.LoadPrefab(StringDefine.PrefabNameDefine.ItemDetialInfo2);
+                Utility.SetParent(obj,m_item.transform);
+                m_itemInfo = Utility.RequireComponent<ItemTipInfo>(obj);
+            }
+            m_itemInfo.UpdateInfo(attr.GetItemData());
+
+            if(SellUtil.CanSell(attr))
+            {
+                m_sellObj.SetActive(true);
+                m_price.text = price.ToString();
+            }
+
+            m_unloadObj.SetActive(false);
+        }
+
+        private void ClickBackAction()
+        {
+            UIPanelManager.Instance.Hide<BagPanel>(false,true);
+        }
+
+        private void ClickSellBtn()
+        {
+            EquipAttribute equip = m_currentAttr as EquipAttribute;
+            if(equip != null)
+            {
+                m_sellEquipObj.SetActive(true);
+                m_sellEquipTip.UpdateInfo(m_currentAttr,price,ClickSellCallBack,
+                    () => m_currentSelectObj.GetComponent<BaseItem>().UpdateSelectShow(false));
+            }
+            else
+            {
+                m_sellItemObj.SetActive(true);
+                m_sellItemTip.UpdateInfo(m_currentAttr,price,ClickSellCallBack,
+                    () => m_currentSelectObj.GetComponent<BaseItem>().UpdateSelectShow(false));
+            }
+        }
+
+        private void ClickSellCallBack(ItemAttribute attr,int num)
+        {
+            ItemSystem.Instance.RemoveItem(attr.itemID,num);
+            ScriptSystem.Instance.AddGold(itemCommonAttribute.Instance.GetPrice(attr.instanceID,num));
+            EquipmentData equip = attr.GetItemData() as EquipmentData;
+            if(equip != null)
+            {
+                GameObjectPool.Instance.FreeGameObjectByObj(
+                      StringDefine.ObjectPooItemKey.BagEquip,m_currentSelectObj,true);
+                m_loopScroller.DelItem(m_currentSelectObj.GetComponent<LoopScrollItem>().Index);
+
+                m_list.Remove(attr);
+
+                m_sellObj.SetActive(false);
+                m_equip.SetActive(false);
+            }
+            else
+            {
+                int remainNum = ItemSystem.Instance.GetItemNum(attr.itemID);
+                if(remainNum == 0)
+                {
+                    GameObjectPool.Instance.FreeGameObjectByObj(
+                        StringDefine.ObjectPooItemKey.BagItem,m_currentSelectObj);
+                    m_loopScroller.DelItem(m_currentSelectObj.GetComponent<LoopScrollItem>().Index);
+                    m_sellObj.SetActive(false);
+                    m_list.Remove(attr);
+                }
+                else
+                {
+                    m_currentSelectObj.GetComponent<BaseItem>().UpdateNum(remainNum);
+                }
+                m_item.SetActive(false);
+            }
+            if(m_currentSelectObj != null)
+                m_currentSelectObj.GetComponent<BaseItem>().UpdateSelectShow(false);
+            m_sellObj.SetActive(false);
+            m_currentAttr = null;
+            m_currentSelectObj = null;
+        }
+
+        private void ClickUnloadBtn()
+        {
+            EquipAttribute equip = m_currentAttr as EquipAttribute;
+            CharSystem.Instance.CharStripEquipment(equip.itemID,equip.charID);
+
+            m_currentSelectObj.GetComponent<EquipItem>().ResetCharInfo();
+
+            m_sellObj.SetActive(true);
+            m_price.text = price.ToString();
+            m_unloadObj.SetActive(false);
+
+        }
+
+        private void UpdateSelect(GameObject obj)
+        {
+            if(m_currentSelectObj == obj)
+                return;
+            if(m_currentSelectObj != null)
+            {
+                m_currentSelectObj.GetComponent<BaseItem>().UpdateSelectShow(false);
+            }
+            m_currentSelectObj = obj;
+            m_currentSelectObj.GetComponent<BaseItem>().UpdateSelectShow(true);
+        }
+    }
+}

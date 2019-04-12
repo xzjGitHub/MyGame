@@ -1,0 +1,94 @@
+using LskConfig;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+
+
+/// <summary>
+/// Char_lvupConfig配置表
+/// </summary>
+public partial class Char_lvupConfig : TxtConfig<Char_lvupConfig>
+{
+    protected override void Init()
+    {
+        base.Init();
+        Info.Name = "Char_lvup";
+    }
+
+    public static Char_lvup GetChar_Lvup(int level)
+    {
+        return Config._Char_lvup.Find(a => a.charLevel == level);
+    }
+
+    public static List<Char_lvup> GetChar_Lvups()
+    {
+        return Config._Char_lvup;
+    }
+
+    public static int GetCharNowLevel(float nowExp)
+    {
+        int index = ComputeNowIndex(nowExp, Config._Char_lvup.Select(item => (int)item.levelupExp).ToList(), 0, Config._Char_lvup.Count - 1);
+        if (index>= Config._Char_lvup.Count)
+        {
+            return Config._Char_lvup[Config._Char_lvup.Count - 1].charLevel;
+        }
+        return Config._Char_lvup[index + 1].charLevel;
+    }
+
+
+    private static int ComputeNowIndex(int nowValue, List<int> values, int startIndex, int endIndex)
+    {
+        return ComputeNowIndex((float)nowValue, values, startIndex, endIndex);
+    }
+    private static int ComputeNowIndex(float nowValue, List<int> values, int startIndex, int endIndex)
+    {
+        try
+        {
+            //检查最后一个
+            if (values.First() == nowValue)
+            {
+                return 0;
+            }
+            //检查最后一个
+            if (values.Last() == nowValue)
+            {
+                return values.Count - 1;
+            }
+            int middleIndex = (startIndex + endIndex + 1) / 2;
+            if (nowValue == values[middleIndex])
+            {
+                return middleIndex;
+            }
+            //先查当前表的前端或后端
+            //在左边
+            if (nowValue < values[middleIndex])
+            {
+                endIndex = middleIndex;
+            }
+            else //在右边
+            {
+                startIndex = middleIndex;
+            }
+            if (endIndex - startIndex == 1)
+            {
+                if (nowValue == values[startIndex])
+                {
+                    return startIndex;
+                }
+                if (nowValue == values[endIndex])
+                {
+                    return endIndex;
+                }
+                return nowValue > values[startIndex] ? startIndex : startIndex - 1;
+            }
+            return ComputeNowIndex(nowValue, values, startIndex, endIndex);
+        }
+        catch (Exception e)
+        {
+            LogHelperLSK.LogWarning("计算错误");
+            return -2;
+        }
+    }
+
+}

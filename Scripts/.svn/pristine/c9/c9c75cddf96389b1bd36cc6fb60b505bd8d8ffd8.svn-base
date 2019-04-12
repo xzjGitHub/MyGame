@@ -1,0 +1,555 @@
+﻿using System;
+using System.Collections;
+using GameEventDispose;
+using Spine;
+using Spine.Unity;
+using UnityEngine;
+
+/// <summary>
+/// 角色骨骼操作
+/// </summary>
+public class CharSkeletonOperation : UICharBase
+{
+    public delegate void Callback(object param);
+
+    public Callback OnPlaySkill;
+    public Callback OnPlayEffectObj1;
+    public Callback OnPlayEffectObj2;
+    public Callback OnPlayEffectObj3;
+    public Callback OnPlayEffectObj4;
+    public Callback OnPlayHit;
+    public Callback OnPlayEvent1;
+    public Callback OnPlayEvent2;
+    public Callback OnPlayEvent3;
+    public Callback OnPlayEnd;
+    public Callback OnPlayFly;
+    //
+    public int SortingOrder { get { return renderer.sortingOrder; } }
+    public int HitSortingOrder { get { return renderer.sortingOrder + 2; } }
+    public int AtkSortingOrder { get { return renderer.sortingOrder + 1; } }
+    public bool IsAtkActionPlayOk { get { return isAtkActionPlayOk; } }
+    //骨骼位置
+    public Vector3 HpPos { get { return GetBoneWorldPos(SkeletonTool.HpBoneName); } }
+    public Vector3 HitPos { get { return GetBoneWorldPos(SkeletonTool.HitBoneName); } }
+    public Vector3 CharCenterPos { get { return GetBoneWorldPos(SkeletonTool.CharCenterName); } }
+    public Vector3 WeaponPos { get { return GetBoneWorldPos(SkeletonTool.WeaponName); } }
+    public Vector3 RootPos { get { return GetBoneWorldPos(SkeletonTool.RootName); } }
+    public Vector3 ForOnhit1 { get { return GetBoneWorldPos(SkeletonTool.OnHit1Name); } }
+    public Vector3 ForOnhit2 { get { return GetBoneWorldPos(SkeletonTool.OnHit2Name); } }
+
+    public CharModuleAction NowAction { get { return nowAction; } }
+
+    public bool IsFade { get { return isFade; } }
+
+    protected void InitAdd(CombatUnit _combatUnit)
+    {
+        //初始化数据
+        base.InitInfo(_combatUnit);
+    }
+
+    /// <summary>
+    /// 初始化
+    /// </summary>
+    protected void Init(SkeletonAnimation skeletonAnimation)
+    {
+        this.skeletonAnimation = skeletonAnimation;
+        //
+        isStartBonePos = true;
+
+        meshRenderer = skeletonAnimation.GetComponent<MeshRenderer>();
+        renderer = skeletonAnimation.GetComponent<Renderer>();
+        skeletonAnimation.AnimationState.Event += SkeletonAnimationEventList;
+    }
+
+    /// <summary>
+    /// 渐隐
+    /// </summary>
+    public void FadeOut()
+    {
+        if (!gameObject.activeInHierarchy)
+        {
+            return;
+        }
+
+        isFade = false;
+        new CoroutineUtil(IEFade());
+    }
+
+    public void Fade()
+    {
+        isFade = false;
+        new CoroutineUtil(IEShow());
+    }
+
+    /// <summary>
+    /// 播放角色动作
+    /// </summary>
+    /// <param name="_action"></param>
+    protected void PlayAction(CharModuleAction _action, Spine.AnimationState.TrackEntryDelegate trackentry = null, int phaseEffectSetID = 0)
+    {
+        if (IsAtkAction(_action))
+        {
+            isAtkActionPlayOk = false;
+        }
+        skeletonAnimation.state.Complete -= trackentry;
+        nowAction = _action;
+        skeletonAnimation.AnimationState.Event -= SkeletonAnimationEventList;
+        skeletonAnimation.AnimationState.Event += SkeletonAnimationEventList;
+        if (_action == CharModuleAction.Idle || _action == CharModuleAction.Idle_1)
+        {
+            trackentry = null;
+        }
+        SkeletonTool.PlayCharAnimation(skeletonAnimation, _action, trackentry);
+        if (phaseEffectSetID != 0)
+        {
+            //初始化阶段状态机
+            EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.PhaseStartEffect, teamID, charID, (object)phaseEffectSetID);
+        }
+    }
+
+    /// <summary>
+    /// 获得阶段效果集合ID
+    /// </summary>
+    /// <param name="_action"></param>
+    /// <returns></returns>
+    public int GetPhaseEffectSetID(CharModuleAction _action, CharEffectConfig charEffectConfig)
+    {
+        if (charEffectConfig == null)
+        {
+            return 0;
+        }
+
+        int _id = 0;
+        switch (_action)
+        {
+            case CharModuleAction.Default:
+                break;
+            case CharModuleAction.Idle:
+                _id = charEffectConfig.phaseEffect1;
+                break;
+            case CharModuleAction.Atk_gongji:
+                _id = charEffectConfig.phaseEffect3;
+                break;
+            case CharModuleAction.Hurt:
+                _id = charEffectConfig.phaseEffect4;
+                break;
+            case CharModuleAction.Hurt_jitui:
+                _id = charEffectConfig.phaseEffect4;
+                break;
+            case CharModuleAction.Die:
+                _id = charEffectConfig.phaseEffect5;
+                break;
+            case CharModuleAction.Celebrate:
+                _id = charEffectConfig.phaseEffect6;
+                break;
+            case CharModuleAction.Run:
+                _id = charEffectConfig.phaseEffect7;
+                break;
+            case CharModuleAction.Atk_chongci:
+                _id = charEffectConfig.phaseEffect2;
+                break;
+            case CharModuleAction.Dazhao:
+                _id = charEffectConfig.phaseEffect3;
+                break;
+            case CharModuleAction.Zhaohuan:
+                break;
+            case CharModuleAction.Zhizao:
+                break;
+            case CharModuleAction.Idle_1:
+                break;
+            case CharModuleAction.Fanhui:
+                break;
+            case CharModuleAction.Atk_zhunbei:
+                break;
+            case CharModuleAction.Buff:
+                _id = charEffectConfig.phaseEffect3;
+                break;
+            case CharModuleAction.XiaoZhao1:
+            case CharModuleAction.XiaoZhao2:
+            case CharModuleAction.XiaoZhao3:
+            case CharModuleAction.XiaoZhao4:
+                _id = charEffectConfig.phaseEffect3;
+                break;
+        }
+        return _id;
+    }
+    /// <summary>
+    /// 获得动作事件特效
+    /// </summary>
+    /// <param name="_action"></param>
+    /// <returns></returns>
+    public int GetActionEventEffectSetID(CharModuleAction _action, CharEffectConfig charEffectConfig)
+    {
+        if (charEffectConfig == null)
+        {
+            return 0;
+        }
+
+        int _id = 0;
+        switch (_action)
+        {
+            case CharModuleAction.Default:
+                break;
+            case CharModuleAction.Idle:
+                _id = charEffectConfig.effectSet1;
+                break;
+            case CharModuleAction.Atk_gongji:
+                _id = charEffectConfig.effectSet2;
+                break;
+            case CharModuleAction.Hurt:
+                _id = charEffectConfig.effectSet3;
+                break;
+            case CharModuleAction.Hurt_jitui:
+                _id = charEffectConfig.effectSet4;
+                break;
+            case CharModuleAction.Die:
+                _id = charEffectConfig.effectSet5;
+                break;
+            case CharModuleAction.Celebrate:
+                _id = charEffectConfig.effectSet6;
+                break;
+            case CharModuleAction.Run:
+                _id = charEffectConfig.effectSet8;
+                break;
+            case CharModuleAction.Atk_chongci:
+                _id = charEffectConfig.effectSet9;
+                break;
+            case CharModuleAction.Dazhao:
+                _id = charEffectConfig.effectSet7;
+                break;
+            case CharModuleAction.Zhaohuan:
+                break;
+            case CharModuleAction.Zhizao:
+                break;
+            case CharModuleAction.Idle_1:
+                break;
+            case CharModuleAction.Fanhui:
+                break;
+            case CharModuleAction.Atk_zhunbei:
+                break;
+            case CharModuleAction.Buff:
+                break;
+            case CharModuleAction.XiaoZhao1:
+            case CharModuleAction.XiaoZhao2:
+            case CharModuleAction.XiaoZhao3:
+            case CharModuleAction.XiaoZhao4:
+                _id = charEffectConfig.effectSet7;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException("_action", _action, null);
+        }
+        return _id;
+    }
+
+    /// <summary>
+    /// 得到当前骨骼层级
+    /// </summary>
+    public int GetSkeletonSortingOrder(int _index, bool isLeft)
+    {
+        switch (_index)
+        {
+            case 0:
+                return isLeft ? 10 : 30;
+            case 1:
+                return isLeft ? 30 : 10;
+            case 2:
+                return isLeft ? 20 : 40;
+            case 3:
+                return isLeft ? 40 : 20;
+            default:
+                return isLeft ? 10 : 30;
+        }
+    }
+
+    /// <summary>
+    /// 渐隐
+    /// </summary>
+    private IEnumerator IEFade()
+    {
+        while (skeletonAnimation.skeleton.A > 0)
+        {
+            if (skeletonAnimation.skeleton.A - Time.deltaTime < 0)
+            {
+                skeletonAnimation.skeleton.A = 0;
+                skeletonAnimation.GetComponent<MeshRenderer>().enabled = false;
+                yield return null;
+            }
+            skeletonAnimation.skeleton.A -= Time.deltaTime;
+            yield return null;
+        }
+        skeletonAnimation.skeleton.A = 0;
+        isFade = true;
+    }
+
+    /// <summary>
+    /// 渐显
+    /// </summary>
+    private IEnumerator IEShow()
+    {
+        while (skeletonAnimation.skeleton.A < 1)
+        {
+            if (skeletonAnimation.skeleton.A + Time.deltaTime > 1)
+            {
+                skeletonAnimation.skeleton.A = 1;
+                skeletonAnimation.GetComponent<MeshRenderer>().enabled = true;
+                yield return null;
+            }
+            skeletonAnimation.skeleton.A += Time.deltaTime;
+            yield return null;
+        }
+        skeletonAnimation.skeleton.A = 1;
+        isFade = true;
+    }
+
+    /// <summary>
+    /// 更新骨骼位置
+    /// </summary>
+    private void UpdateBonePos()
+    {
+        if (!isStartBonePos || skeletonAnimation == null || skeletonAnimation.skeleton == null)
+        {
+            return;
+        }
+        hpPos = GetBoneWorldPos(SkeletonTool.HpBoneName);
+        hitPos = GetBoneWorldPos(SkeletonTool.HitBoneName);
+        charCenterPos = GetBoneWorldPos(SkeletonTool.CharCenterName);
+        weaponPos = GetBoneWorldPos(SkeletonTool.WeaponName);
+        rootPos = GetBoneWorldPos(SkeletonTool.RootName);
+    }
+
+    private Bone tempBone;
+
+    /// <summary>
+    /// 获取骨头在UNITY世界坐标的位置
+    /// </summary>
+    private Vector3 GetBoneWorldPos(string boneName)
+    {
+        tempBone = skeletonAnimation.skeleton.FindBone(boneName);
+        if (tempBone == null)
+        {
+            LogHelperLSK.LogWarning("未找到骨骼" + boneName + "  使用" + SkeletonTool.RootName + "的位置");
+            tempBone = skeletonAnimation.skeleton.FindBone(SkeletonTool.RootName);
+            //return Vector3.zero;
+        }
+        return skeletonAnimation.transform.TransformPoint(new Vector3(tempBone.WorldX, tempBone.WorldY, 1));
+    }
+
+    /// <summary>
+    /// 加载资源
+    /// </summary>
+    protected SkeletonAnimation LoadSkeletonRes(string rpName, Transform _transform, int _sortingOrder)
+    {
+        SkeletonAnimation _obj = ResourceLoadUtil.LoadCharModel(rpName, _transform).GetComponent<SkeletonAnimation>();
+
+        SkeletonTool.SetSkeletonLayer(_obj, _sortingOrder);
+        _obj.transform.localPosition = Vector3.left * 0f;
+        return _obj;
+    }
+
+    protected bool IsAtkAction(CharModuleAction charModuleAction)
+    {
+        switch (charModuleAction)
+        {
+            case CharModuleAction.Atk_gongji:
+            case CharModuleAction.Dazhao:
+            case CharModuleAction.XiaoZhao1:
+            case CharModuleAction.XiaoZhao2:
+            case CharModuleAction.XiaoZhao3:
+            case CharModuleAction.XiaoZhao4:
+            case CharModuleAction.Buff:
+                return true;
+            case CharModuleAction.Default:
+            case CharModuleAction.Idle:
+            case CharModuleAction.Hurt:
+            case CharModuleAction.Hurt_jitui:
+            case CharModuleAction.Die:
+            case CharModuleAction.Celebrate:
+            case CharModuleAction.Run:
+            case CharModuleAction.Atk_chongci:
+            case CharModuleAction.Zhaohuan:
+            case CharModuleAction.Zhizao:
+            case CharModuleAction.Idle_1:
+            case CharModuleAction.Fanhui:
+            case CharModuleAction.Atk_zhunbei:
+            default:
+                return false;
+        }
+    }
+
+    protected bool IsAtkAction(string actionName)
+    {
+        CharModuleAction charModuleAction = SkeletonTool.GetCharModuleState(actionName);
+        switch (charModuleAction)
+        {
+            case CharModuleAction.Atk_gongji:
+            case CharModuleAction.Dazhao:
+            case CharModuleAction.XiaoZhao1:
+            case CharModuleAction.XiaoZhao2:
+            case CharModuleAction.XiaoZhao3:
+            case CharModuleAction.XiaoZhao4:
+            case CharModuleAction.Buff:
+                return true;
+            case CharModuleAction.Default:
+            case CharModuleAction.Idle:
+            case CharModuleAction.Hurt:
+            case CharModuleAction.Hurt_jitui:
+            case CharModuleAction.Die:
+            case CharModuleAction.Celebrate:
+            case CharModuleAction.Run:
+            case CharModuleAction.Atk_chongci:
+            case CharModuleAction.Zhaohuan:
+            case CharModuleAction.Zhizao:
+            case CharModuleAction.Idle_1:
+            case CharModuleAction.Fanhui:
+            case CharModuleAction.Atk_zhunbei:
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// 骨骼动画事件列表
+    /// </summary>
+    /// <param name="trackEntry"></param>
+    /// <param name="e"></param>
+    private void SkeletonAnimationEventList(TrackEntry trackEntry, Spine.Event e)
+    {
+        if (CombatSystem.Instance.isTestSkill)
+        {
+            LogHelperLSK.Log("收到" + e.Data.Name + "事件");
+        }
+        switch (e.Data.Name)
+        {
+            case SkillEventName:
+
+                if (OnPlaySkill != null)
+                {
+                    OnPlaySkill(null);
+                }
+                break;
+            case EffectObjEventName1:
+                if (OnPlayEffectObj1 != null)
+                {
+                    OnPlayEffectObj1(0);
+                }
+
+                break;
+            case EffectObjEventName2:
+                if (OnPlayEffectObj2 != null)
+                {
+                    OnPlayEffectObj2(1);
+                }
+                break;
+            case EffectObjEventName3:
+                if (OnPlayEffectObj3 != null)
+                {
+                    OnPlayEffectObj3(2);
+                }
+                break;
+            case EffectObjEventName4:
+                if (OnPlayEffectObj4 != null)
+                {
+                    OnPlayEffectObj4(3);
+                }
+                break;
+            case HitEventName1:
+            case HitEventName2:
+            case HitEventName3:
+            case HitEventName4:
+                if (OnPlayHit != null)
+                {
+                    OnPlayHit(null);
+                }
+                break;
+            case EventName1:
+                if (OnPlayEvent1 != null)
+                {
+                    OnPlayEvent1(0);
+                }
+                break;
+            case EventName2:
+                if (OnPlayEvent2 != null)
+                {
+                    OnPlayEvent2(1);
+                }
+                break;
+            case EventName3:
+                if (OnPlayEvent3 != null)
+                {
+                    OnPlayEvent3(2);
+                }
+                break;
+            case EndName:
+                if (OnPlayEnd != null)
+                {
+                    OnPlayEnd(null);
+                }
+                break;
+            case FlyName:
+                if (OnPlayFly != null)
+                {
+                    OnPlayFly(null);
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 每帧更新
+    /// </summary>
+    private void Update()
+    {
+        // UpdateBonePos();
+    }
+
+
+    //
+    protected bool isFade;
+    protected bool isStartBonePos;
+    //
+
+    public Vector3 GetBoneVector3(Transform carrier, string boneName)
+    {
+        Vector3 vector = GetBoneWorldPos(boneName);
+        return moveTrans.TransformPoint(new Vector3(vector.x, vector.y, moveTrans.localPosition.z));
+
+        // carrier.InverseTransformPoint();
+    }
+
+
+    protected bool isAtkActionPlayOk;
+    protected Vector3 hpPos;
+    protected Vector3 hitPos;
+    protected Vector3 charCenterPos;
+    protected Vector3 weaponPos;
+    protected Vector3 rootPos;
+    //
+    protected new Renderer renderer;
+    protected MeshRenderer meshRenderer;
+    protected CharModuleAction nowAction;
+    //
+    protected SkeletonAnimation skeletonAnimation;//骨骼动画
+    //自定义字符串
+    protected const string MoveransfromName = "Move";
+    protected const string LeftTransfromName = "Left";
+    //技能事件
+    private const string SkillEventName = "SkillEvent";
+    //公共技能1
+    private const string EffectObjEventName1 = "EOEvent1";
+    //公共技能2
+    private const string EffectObjEventName2 = "EOEvent2";
+    //公共技能3
+    private const string EffectObjEventName3 = "EOEvent3";
+    //公共技能4
+    private const string EffectObjEventName4 = "EOEvent4";
+    private const string HitEventName1 = "HitEvent";
+    private const string HitEventName2 = "Hit2";
+    private const string HitEventName3 = "Hit3";
+    private const string HitEventName4 = "Hit4";
+    private const string EventName1 = "Event1";
+    private const string EventName2 = "Event2";
+    private const string EventName3 = "Event3";
+    private const string EndName = "EndEvent";
+    private const string FlyName = "Fly";
+}
+

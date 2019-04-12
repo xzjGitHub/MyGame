@@ -1,0 +1,32 @@
+﻿using UnityEngine;
+using UnityEngine.UI;
+
+namespace Localization
+{
+    public class TextLocalization: AbsLocalization
+    {
+        private Text m_text;
+
+        public override void Init()
+        {
+            m_text = GetComponent<Text>();
+            if(m_text != null)
+            {
+                Debug.LogError("本地化text组件出错，没有找到text组件");
+                return;
+            }
+            m_absLocalization = GetComponent<TextLocalization>();
+            if(GameDef.CanRuntimeChangeLanguage)
+                LocalizationManager.Instance.Register(m_absLocalization);
+            if(m_absLocalization != null)
+                Localize();
+        }
+
+        #region 
+        public override void Localize()
+        {
+            m_text.text = LocalizationManager.Instance.GetCurLocalText(LocalizerId);
+        }
+        #endregion
+    }
+}

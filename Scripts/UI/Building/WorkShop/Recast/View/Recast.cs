@@ -1,0 +1,133 @@
+﻿using Comomon.ItemList;
+using UnityEngine;
+
+namespace WorkShop.Recast.View
+{
+    public class Recast: MonoBehaviour
+    {
+        private GameObject m_cost;
+        private GameObject m_bottom;
+
+        private NewItemList m_rightList;
+        private RecatLeftEquip m_leftEquip;
+        private RecastCostInfo m_costCostInfo;
+
+        private bool m_hasInit;
+
+        private ItemData m_currentSelect;
+        private EquipmentData m_currentEquip;
+        private int m_craftId;
+
+        private void OnDisable()
+        {
+            if(m_currentEquip != null)
+                m_leftEquip.UpdateSelect(m_currentEquip.itemID,false);
+
+            if(m_currentSelect != null)
+                m_rightList.UpdateSelectShow(m_currentSelect.itemID,false);
+
+            m_bottom.SetActive(false);
+            m_cost.SetActive(false);
+
+            m_currentSelect = null;
+            m_currentEquip = null;
+        }
+
+        private void InitComponent()
+        {
+            m_bottom = transform.Find("Bottom").gameObject;
+            m_bottom.SetActive(false);
+
+            GameObject obj = BuildUIController.Instance.LoadItemList(
+               transform.Find("Right/Parent"),out m_rightList);
+            m_rightList = Utility.RequireComponent<NewItemList>(obj);
+            m_rightList.InitComponent();
+
+            m_leftEquip = Utility.RequireComponent<RecatLeftEquip>(transform.Find("Left").gameObject);
+            m_leftEquip.InitComponent();
+
+            m_cost = transform.Find("CostInfo").gameObject;
+            m_cost.SetActive(false);
+            m_costCostInfo = Utility.RequireComponent<RecastCostInfo>(m_cost);
+            m_costCostInfo.InitComponent();
+
+            Utility.AddButtonListener(transform.Find("Bottom/Recast/Btn"),ClickRecast);
+        }
+
+        public void UpdateInfo()
+        {
+            if(!m_hasInit)
+            {
+                InitComponent();
+                m_hasInit = true;
+            }
+            m_rightList.InitListList(ItemSystem.Instance.GetRecastItemList(),ClickItem);
+            m_rightList.ClickFirst();
+        }
+
+        private void ClickItem(ItemAttribute attr)
+        {
+            if(m_currentSelect != null)
+            {
+                if(m_currentSelect.itemID == attr.itemID)
+                {
+                    return;
+                }
+                m_rightList.UpdateSelectShow(m_currentSelect.itemID,false);
+                m_currentSelect = attr.GetItemData();
+                m_rightList.UpdateSelectShow(m_currentSelect.itemID,true);
+
+                m_leftEquip.UpdateInfo(m_currentSelect.instanceID,ClickEquip);
+            }
+            else
+            {
+                m_currentSelect = attr.GetItemData();
+                m_rightList.UpdateSelectShow(m_currentSelect.itemID,true);
+                m_leftEquip.UpdateInfo(m_currentSelect.instanceID,ClickEquip);
+            }
+        }
+
+        private void ClickEquip(EquipmentData data,int craftId)
+        {
+            if(m_currentEquip != null && m_currentSelect.itemID != data.itemID)
+            {
+                m_leftEquip.UpdateSelect(m_currentEquip.itemID,false);
+            }
+            m_currentEquip = data;
+            m_craftId = craftId;
+            m_cost.SetActive(true);
+            m_costCostInfo.UpdateInfo(m_craftId,m_currentEquip);
+
+            m_leftEquip.UpdateSelect(m_currentEquip.itemID,true);
+            m_bottom.SetActive(true);
+        }
+
+
+        private void ClickRecast()
+        {
+            if(ControllerCenter.Instance.EquipRecastController.CanRecast(m_craftId))
+            {
+                ControllerCenter.Instance.EquipRecastController.Recast(m_craftId,m_currentEquip);
+
+                m_rightList.FreeItem(m_currentSelect.itemID);
+                m_leftEquip.Free();
+                m_rightList.ClickFirst();
+
+                //    m_leftEquip.UpdateSelect(m_currentEquip.itemID,false);
+                m_bottom.SetActive(false);
+                m_cost.SetActive(false);
+            }
+        }
+
+        public void Free()
+        {
+            if(m_rightList != null)
+                m_rightList.Free();
+            if(m_leftEquip != null)
+                m_leftEquip.Free();
+            if(m_costCostInfo != null)
+                m_costCostInfo.Free();
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.NewItemList);
+        }
+    }
+}

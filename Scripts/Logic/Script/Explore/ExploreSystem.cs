@@ -1,0 +1,756 @@
+﻿using System.Collections.Generic;
+using System.Linq;
+using GameEventDispose;
+
+/// <summary>
+/// 探索系统
+/// </summary>
+public class ExploreSystem
+{
+    public static ExploreSystem Instance { get { return instance; } }
+    /// <summary>
+    /// 地图探索完成状态
+    /// </summary>
+    public bool IsMapExloreFinish { get { return nowWPAttribute.nextWP == null || nowWPAttribute.nextWP.Count == 0; } }
+    public int NowMapId { get { return nowMapId; } }
+
+    public bool IsTestModule { get { return isTestModule; } }
+
+    public int NowWaypointId { get { return nowWaypointId; } }
+
+
+
+    private int wpValue1 = -1;
+    private int wpValue2 = -1;
+    private int wpValue3 = -1;
+    private int wpValue4 = -1;
+    private int wpValue5 = -1;
+    private int wpValue6 = -1;
+
+
+    /// <summary>
+    ///能使用房间列表
+    /// </summary>
+    /// <returns></returns>
+    public List<int> CanUseRoomIDs()
+    {
+        List<int> list = new List<int>
+        {
+            nowWaypointId
+        };
+        //现在是房间
+        if (nowWPAttribute.wp_template.WPCategory == 2)
+        {
+            if (nowWPAttribute.events.Any(a => !a.isCall))
+            {
+                return list;
+            }
+            foreach (int wpID in nowWPAttribute.nextWP)
+            {
+                //找点下一个路点
+                WPAttribute next = GetWPAttribute(wpID);
+                if (next == null)
+                {
+                    continue;
+                }
+                if (next.nextWP != null)
+                {
+                    //房间
+                    list.AddRange(next.nextWP);
+                }
+            }
+            return list;
+        }
+        //现在是路点
+        if (nowWPAttribute.nextWP != null && nowWPAttribute.nextWP.Count > 0)
+        {
+            //路点所有事件都完成了，房间可以用了
+            if (nowWPAttribute.events.All(a => a.isCall))
+            {
+                //加载路点上的房间
+                list.AddRange(nowWPAttribute.nextWP);
+            }
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// 访问进度
+    /// </summary>
+    public float VisitProgress
+    {
+        get
+        {
+            if (nowWPAttribute.events == null || nowWPAttribute.events.Count == 0)
+            {
+                return 1;
+            }
+
+            return (nowWPAttribute.WPEvents[nowSceneIndex].FindAll(a => a.isCall).Count) / (float)nowWPAttribute.events.Count;
+        }
+    }
+
+    public Map_template MapTemplate { get { return Map_templateConfig.GetMap_templat(nowMapId); } }
+    /// <summary>
+    /// 路点是否访问结束
+    /// </summary>
+    public bool IsWPVisitEnd { get { return visitEventIDs.Count == NowWPAttribute.events.Count; } }
+
+    public WPAttribute NowWPAttribute { get { return nowWPAttribute; } }
+
+    public List<WPAttribute> WpAttributes { get { return wpAttributes; } }
+
+    public Dictionary<int, ItemAttribute> BagItemAttributes { get { return bagItemAttributes; } }
+
+    public Map_template Map_template { get { return map_template; } }
+
+    public List<EventAttribute> NowEvents { get { return nowEvents; } }
+    public int NowSceneIndex { get { return nowSceneIndex; } }
+
+    public int NowEventIndex { get { return nowEventIndex; } }
+
+    //
+    public ExploreSystem(ExploreMap exploreMap, List<int> testValue = null)
+    {
+        if (testValue!=null)
+        {
+            InitTestValue(testValue);
+        }
+        this.exploreMap = exploreMap;
+        instance = this;
+        //
+        previousWpId = 0;
+        nowWPIndex = 0;
+        nowMapId = exploreMap.MapId;
+        map_template = Map_templateConfig.GetMap_templat(exploreMap.MapId);
+        //
+        wpAttributes = StartCreateWP();
+        if (wpAttributes.Count == 0)
+        {
+            return;
+        }
+        //
+        nowWPAttribute = GetWPAttribute(map_template.initialWP);
+        nowWaypointId = nowWPAttribute.waypointId;
+        //
+        EventDispatcher.Instance.ExploreEvent.AddEventListener<ExploreEventType, object>(EventId.ExploreEvent, OnExploreEvent);
+    }
+
+    /// <summary>
+    /// 进入关卡
+    /// </summary>
+    public void PlayExplore(bool _isTestModule = false)
+    {
+        isTestModule = _isTestModule;
+    }
+    /// <summary>
+    /// 选择房间
+    /// </summary>
+    /// <returns></returns>
+    public bool SelectRoom()
+    {
+        return SelectWP(nowWPAttribute.nextWP[0]);
+    }
+    /// <summary>
+    /// 选择路点
+    /// </summary>
+    public bool SelectWP(int wpID)
+    {
+        //自己
+        if (nowWaypointId == wpID)
+        {
+            return false;
+        }
+        //初始路点
+        if (wpID == map_template.initialWP)
+        {
+            return false;
+        }
+        //当前路点的下一个可选的房间
+        bool isHave = false;
+        isHave = nowWPAttribute.nextWP.Contains(wpID);
+        if (!isHave)
+        {
+            foreach (int item in nowWPAttribute.nextWP)
+            {
+                WPAttribute temp = GetWPAttribute(item);
+                if (temp == null || !temp.nextWP.Contains(wpID))
+                {
+                    continue;
+                }
+
+                isHave = true;
+                break;
+            }
+        }
+        if (!isHave)
+        {
+            return false;
+        }
+        //包含本身
+        if (selectWPs.Contains(wpID))
+        {
+            return false;
+        }
+
+        nowWPAttribute = GetWPAttribute(wpID);
+        if (nowWPAttribute == null)
+        {
+            return false;
+        }
+
+        int previousWP = nowWPAttribute.previousWP;
+        nowWPAttribute = GetWPAttribute(previousWP);
+        if (nowWPAttribute == null)
+        {
+            return false;
+        }
+
+        if (!selectWPs.Contains(previousWP))
+        {
+            wpID = previousWP;
+        }
+
+        nowWaypointId = wpID;
+        nowWPAttribute = GetWPAttribute(wpID);
+        selectWPs.Add(wpID);
+        //
+        //  EventDispatcher.Instance.ExploreEvent.AddEventListener<ExploreEventType, object>(EventId.ExploreEvent, OnExploreEvent);
+        StartSceneEvent(0);
+        LogHelperLSK.LogError("选择路点=" + wpID);
+        return true;
+    }
+    /// <summary>
+    /// 退出探索
+    /// </summary>
+    public void QuitExplore()
+    {
+        nowMapId = 0;
+        nowEventIndex = -1;
+        nowWaypointId = 0;
+    }
+    /// <summary>
+    /// 前面是否有陷阱
+    /// </summary>
+    public EventAttribute PreviousHaveTrap(int eventIndex)
+    {
+        EventAttribute nowEvent = nowEvents.Find(a => a.EventIndex == eventIndex);
+        return nowEvents.Find(a => !a.isCall && a.EventType == WPEventType.Trap && a.SceneIndex == nowEvent.SceneIndex && a.ScenePos <= nowEvent.ScenePos);
+    }
+
+    private int nowClickEventIndex;
+    private bool isMove;
+
+    public void SetNowClickEvent(int index)
+    {
+        nowClickEventIndex = index;
+    }
+    public void StartMove()
+    {
+        isMove = true;
+    }
+
+    public void MoveEnd()
+    {
+        isMove = false;
+    }
+
+    private readonly string failStr = "你必须先击败眼前的敌人！";
+    public bool IsCanVisit(int eventIndex)
+    {
+        if (isMove)
+        {
+            return false;
+        }
+
+        if (nowClickEventIndex == -1)
+        {
+            //检查前面是否有战斗事件
+            EventAttribute temp = nowEvents.Find(a => a.EventIndex == eventIndex);
+            float tempPos = temp.ScenePos + (1 + temp.SceneIndex);
+            float nowPos;
+            foreach (EventAttribute item in nowEvents)
+            {
+                nowPos = item.ScenePos + (1 + item.SceneIndex);
+                if (item.isCall || (item.EventType != WPEventType.Combat && item.EventType != WPEventType.Boss) ||
+                    item.EventIndex == eventIndex || nowPos > tempPos)
+                {
+                    continue;
+                }
+
+                EventDispatcher.Instance.ExploreEvent.DispatchEvent(EventId.ExploreEvent, ExploreEventType.EventVisitFail, (object)failStr);
+                return false;
+            }
+            return true;
+        }
+        return nowClickEventIndex == eventIndex;
+
+        //return nowEventIndex == eventIndex;
+        //return true;
+        //if (nowEventIndex == -1) return true;
+        //return nowEventIndex == eventIndex;
+    }
+
+    /// <summary>
+    /// 访问事件
+    /// </summary>
+    public WPVisitEventResult VisitEvent(int WPID, int eventIndex, WPEventVisitType visitType, int randomNum = 99)
+    {
+        WPAttribute wpAttribute = wpAttributes.Find(a => a.waypointId == WPID);
+        eventAttribute = GetEventAttribute(eventIndex, wpAttribute);
+        if (eventAttribute == null)
+        {
+            return new WPVisitEventResult { isSucceed = false };
+        }
+
+        //是否是boss事件
+        if (eventAttribute.event_template.isUnique == 1 && visitType != WPEventVisitType.Abandon)
+        {
+            exploreMap.AddBossEventVisitEnd(eventAttribute.eventId);
+        }
+        visitEventIDs.Add(eventAttribute.eventId);
+        nowEventIndex = eventIndex;
+        nowWaypointId = WPID;
+        //设置事件属性
+        eventAttribute.isCall = true;
+        wpAttribute.doneEventIndexs.Add(eventIndex);
+
+        return new WPVisitEventResult { isSucceed = true };
+        //
+        WPVisitEventResult result = new WPVisitEventResult { isSucceed = true };
+        WPEventType eventType = (WPEventType)eventAttribute.event_template.eventType;
+        //是否是boss事件
+        if (eventAttribute.event_template.isUnique == 1 && visitType != WPEventVisitType.Abandon)
+        {
+            exploreMap.AddBossEventVisitEnd(eventAttribute.eventId);
+        }
+        visitEventIDs.Add(eventAttribute.eventId);
+        nowEventIndex = eventIndex;
+        nowWaypointId = WPID;
+        //设置事件属性
+        eventAttribute.isCall = true;
+        wpAttribute.doneEventIndexs.Add(eventIndex);
+        //获得结果
+        GetWPVisitEventResult(result, eventAttribute, visitType, randomNum);
+        //消耗生命
+        if (IsHPCost(eventType, visitType, result.visitResult))
+        {
+            TeamSystem.Instance.EventVisitHPCost(eventAttribute.VisitHPCost, out result.charCostHP);
+        }
+        //
+        return result;
+    }
+
+    /// <summary>
+    /// 获得路点属性
+    /// </summary>
+    public EventAttribute GetEventAttribute(int eventIndex)
+    {
+        return nowEvents.Find(a => a.EventIndex == eventIndex);
+    }
+
+    /// <summary>
+    /// 获得路点属性
+    /// </summary>
+    public WPAttribute GetWPAttribute(int wpID)
+    {
+        return wpAttributes.Find(a => a.waypointId == wpID);
+    }
+
+
+    private void InitTestValue(List<int> list)
+    {
+        wpValue1 = list[0];
+        wpValue2 = list[1];
+        wpValue3 = list[2];
+        wpValue4 = list[3];
+        wpValue5 = list[4];
+        wpValue6 = list[5];
+    }
+
+
+    /// <summary>
+    /// 添加物品
+    /// </summary>
+    public void AddItem(ItemData itemData)
+    {
+        foreach (KeyValuePair<int, ItemAttribute> item in bagItemAttributes)
+        {
+            if (ItemSystem.Instance.IsItemAccumulate(item.Value.itemType))
+            {
+                if (item.Value.instanceID != itemData.instanceID)
+                {
+                    continue;
+                }
+
+                item.Value.sum += itemData.sum;
+                return;
+            }
+        }
+        int itemID = bagItemAttributes.Count;
+        if (bagItemAttributes.ContainsKey(itemID))
+        {
+            itemID++;
+        }
+
+        itemData.itemID = itemID;
+        bagItemAttributes.Add(itemID, new ItemAttribute(itemData));
+    }
+
+    /// <summary>
+    /// 丢弃物品
+    /// </summary>
+    public void DiscardItem(int index)
+    {
+        if (bagItemAttributes.ContainsKey(index))
+        {
+            bagItemAttributes.Remove(index);
+        }
+    }
+
+    /// <summary>
+    /// 场景是否结束
+    /// </summary>
+    public bool IsSceneEnd(int eventIndex)
+    {
+        if (nowEvents.Count==0)
+        {
+            return true;
+        }
+        return nowEvents.Last().EventIndex == eventIndex;
+    }
+
+    /// <summary>
+    /// 是否是最后一个场景
+    /// </summary>
+    /// <param name="sceneIndex"></param>
+    /// <returns></returns>
+    private bool IsLastScene(int sceneIndex = -1)
+    {
+        if (sceneIndex == -1)
+        {
+            sceneIndex = nowSceneIndex;
+        }
+
+        if (nowWPAttribute.WPEvents == null || nowWPAttribute.WPEvents.Count == 0)
+        {
+            return true;
+        }
+
+        return nowWPAttribute.WPEvents.Last().Key == sceneIndex;
+    }
+
+    /// <summary>
+    /// 探索事件
+    /// </summary>
+    private void OnExploreEvent(ExploreEventType arg1, object arg2)
+    {
+        switch (arg1)
+        {
+            case ExploreEventType.WPSelect:
+                EventDispatcher.Instance.ExploreEvent.DispatchEvent(EventId.ExploreEvent, ExploreEventType.WPStartReady, (object)true);
+                break;
+            case ExploreEventType.WPEnd:
+                // EventDispatcher.Instance.ExploreEvent.RemoveEventListener<ExploreEventType, object>(EventId.ExploreEvent, OnExploreEvent);
+                break;
+            case ExploreEventType.QuitExplore:
+                instance = null;
+                break;
+            case ExploreEventType.SceneEnd:
+                //检查是否是最后一个场景
+                //if (!IsLastScene())
+                //{
+                //    StartSceneEvent(nowSceneIndex + 1);
+                //    EventDispatcher.Instance.ExploreEvent.DispatchEvent(EventId.ExploreEvent, ExploreEventType.SceneStartReady, (object)false);
+                //    return;
+                //}
+                EventDispatcher.Instance.ExploreEvent.DispatchEvent(EventId.ExploreEvent, ExploreEventType.WPEnd, (object)null);
+                break;
+            case ExploreEventType.VisitEvent:
+                nowEventIndex = (arg2 as EventAttribute).EventIndex;
+                break;
+            case ExploreEventType.VisitEventEnd:
+                nowEventIndex = -1;
+                nowClickEventIndex = -1;
+                break;
+            case ExploreEventType.SceneStartReady:
+                nowClickEventIndex = -1;
+                nowEventIndex = -1;
+                break;
+            case ExploreEventType.ExploreFinish:
+                if (ScriptSystem.Instance.ScriptPhase == ScriptPhase.Front)
+                {
+                    ScriptSystem.Instance.SetScriptPhase(ScriptPhase.Normal);
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 开始场景事件
+    /// </summary>
+    /// <param name="sceneIndex"></param>
+    private void StartSceneEvent(int sceneIndex)
+    {
+        nowSceneIndex = sceneIndex;
+        nowEvents = GetSceneEvents(sceneIndex);
+    }
+    /// <summary>
+    /// 创建路点
+    /// </summary>
+    private List<WPAttribute> StartCreateWP()
+    {
+        List<WPAttribute> list = CreateWP(map_template.initialWP, 0, teamAttribute, exploreMap.UnusableEvents);
+        //清除相同的路点
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            if (list.FindAll(a => a.waypointId == list[i].waypointId).Count > 1)
+            {
+                list.RemoveAt(i);
+            }
+        }
+        //
+        return list;
+    }
+
+    /// <summary>
+    /// 创建路点
+    /// </summary>
+    private List<WPAttribute> CreateWP(int wpID, int previousWP, TeamAttribute teamAttribute, List<int> unusableEvents)
+    {
+        List<WPAttribute> list = new List<WPAttribute>();
+        WP_template wP_Template = WP_templateConfig.GetWpTemplate(wpID);
+        if (wP_Template == null)
+        {
+            return list;
+        }
+        //添加当前路点
+        //list.Add(new WPAttribute(wpID, teamAttribute, unusableEvents, previousWP, wP_Template.nextWP, map_template.baseWPLevel));
+        list.Add(new WPAttribute(wpID, teamAttribute, unusableEvents, previousWP, wP_Template.nextWP, map_template.baseWPLevel
+        , new List<int> { wpValue1, wpValue2, wpValue3, wpValue4, wpValue5, wpValue6, }));
+        //添加下一个路点列表
+        List<WPAttribute> list1 = new List<WPAttribute>();
+        foreach (int item in wP_Template.nextWP)
+        {
+            if (item == wpID)
+            {
+                continue;
+            }
+
+            list1.AddRange(CreateWP(item, wpID, teamAttribute, unusableEvents));
+        }
+        list.AddRange(list1);
+        return list;
+    }
+
+    /// <summary>
+    /// 得到指定场景的事件列表
+    /// </summary>
+    /// <param name="sceneIndex"></param>
+    /// <returns></returns>
+    private List<EventAttribute> GetSceneEvents(int sceneIndex)
+    {
+        return nowWPAttribute.events;
+        return nowWPAttribute.WPEvents.ContainsKey(sceneIndex) ? nowWPAttribute.WPEvents[sceneIndex] : null;
+    }
+
+    /// <summary>
+    /// 得到事件属性
+    /// </summary>
+    private EventAttribute GetEventAttribute(int _eventIndex, WPAttribute _wpAttribute)
+    {
+        return _wpAttribute.events.Find(a => a.EventIndex == _eventIndex);
+    }
+    /// <summary>
+    /// 获得访问事件结果
+    /// </summary>
+    private void GetWPVisitEventResult(WPVisitEventResult result, EventAttribute eventAttribute, WPEventVisitType type, int randomNum)
+    {
+        result.visitResult = VisitResult(eventAttribute, type, randomNum);
+        result.eventID = eventAttribute.eventId;
+        //得到访问结果_选项得奖励
+        //访问成功
+        if (result.visitResult == WPEventVisitResult.Success || result.visitResult == WPEventVisitResult.Jckpot)
+        {
+            //金钱
+            result.gold = 0;
+            result.token = 0;
+            result.isSucceed = true;
+            //添加物品
+            switch (result.visitResult)
+            {
+                case WPEventVisitResult.Jckpot:
+                    result.itemRewards = eventAttribute.finalRewardItem;
+                    break;
+                case WPEventVisitResult.Success:
+                    result.itemRewards = eventAttribute.baseRewardItems;
+                    break;
+            }
+            //添加生命球
+            result.healingGlobSum = eventAttribute.EventType == WPEventType.Choice && type == WPEventVisitType.Normal ? 0 : eventAttribute.healingGlobSum;
+            //添加经验             //召唤事件和战斗事件添加角色经验
+            if (eventAttribute.EventType == WPEventType.Combat || eventAttribute.EventType == WPEventType.Summon || eventAttribute.EventType == WPEventType.Boss)
+            {
+                foreach (CharAttribute item in teamAttribute.charAttribute)
+                {
+                    result.charExp.Add((int)eventAttribute.FinalCharExpReward(0));
+                }
+            }
+            return;
+        }
+        result.isSucceed = false;
+    }
+    /// <summary>
+    /// 访问结果
+    /// </summary>
+    private WPEventVisitResult VisitResult(EventAttribute eventAttribute, WPEventVisitType type, int randomNum)
+    {
+        switch (type)
+        {
+            case WPEventVisitType.Pay:
+                return WPEventVisitResult.Jckpot;
+            case WPEventVisitType.Abandon:
+                return WPEventVisitResult.Failure;
+        }
+        switch (eventAttribute.EventType)
+        {
+            case WPEventType.Boss:
+            case WPEventType.Combat:
+            case WPEventType.Summon:
+                return WPEventVisitResult.Jckpot;
+            case WPEventType.Remains:
+            case WPEventType.Grass:
+                //选项结算
+                //if (randomNum <= eventAttribute.finalAmbushChance) return WPEventVisitResult.Ambush;
+                //if (randomNum <= eventAttribute.finalTrapChance) return WPEventVisitResult.Trap;
+                //if (randomNum <= eventAttribute.finalFailureChance) return WPEventVisitResult.Failure;
+                //if (randomNum <= eventAttribute.finalSuccessChance) return WPEventVisitResult.Success;
+                //if (randomNum <= eventAttribute.jackpotChance) return WPEventVisitResult.Jckpot;
+                return WPEventVisitResult.Jckpot;
+                return WPEventVisitResult.Success;
+            case WPEventType.Choice:
+                return WPEventVisitResult.Success;
+            case WPEventType.Herb:
+            case WPEventType.Treasure:
+                return randomNum > 100 - eventAttribute.jackpotChance ? WPEventVisitResult.Jckpot : WPEventVisitResult.Success;
+            case WPEventType.Trap:
+                return WPEventVisitResult.Success;
+        }
+        return WPEventVisitResult.Failure;
+    }
+
+    /// <summary>
+    /// 是否消耗生命
+    /// </summary>
+    /// <returns></returns>
+    private bool IsHPCost(WPEventType eventType, WPEventVisitType visitType, WPEventVisitResult visitResult = WPEventVisitResult.Failure)
+    {
+        if (visitType == WPEventVisitType.Abandon)
+        {
+            return false;
+        }
+        //
+        switch (eventType)
+        {
+            case WPEventType.Remains:
+            case WPEventType.Herb:
+            case WPEventType.Combat:
+            case WPEventType.Summon:
+            case WPEventType.Boss:
+            case WPEventType.Treasure:
+            case WPEventType.Choice:
+            case WPEventType.Grass:
+            case WPEventType.Trap:
+                return false;
+        }
+        //
+        if (visitResult == WPEventVisitResult.Trap)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 现在的场景索引
+    /// </summary>
+    private int nowSceneIndex;
+    //现在地图ID
+    private int nowMapId;
+    //现在路点iD
+    private int nowWaypointId;
+    //现在事件索引
+    private int nowEventIndex;
+    //现在路点索引
+    private readonly int nowWPIndex;
+    //前一个路点ID
+    private readonly int previousWpId;
+    //
+    private bool isTestModule;
+    //队伍属性
+    private TeamAttribute teamAttribute = TeamSystem.Instance.TeamAttribute;
+    //
+    private readonly List<WPAttribute> nowWPAttributes = new List<WPAttribute>();
+    private List<EventAttribute> nowEvents = new List<EventAttribute>();
+    private List<WPAttribute> wpAttributes = new List<WPAttribute>();
+    private List<int> visitEventIDs = new List<int>();
+    private Dictionary<int, ItemAttribute> bagItemAttributes = new Dictionary<int, ItemAttribute>();
+    private List<int> selectWPs = new List<int>();
+    //
+    private EventAttribute eventAttribute;
+    private WPAttribute nowWPAttribute;
+    private readonly ExploreData exploreData;
+    //
+    private ExploreMap exploreMap;
+    private Map_template map_template;
+    private readonly Zone zone;
+    //
+    private static ExploreSystem instance;
+}
+
+/// <summary>
+/// 事件访问结果
+/// </summary>
+public class WPVisitEventResult
+{
+    public int eventID;
+    /// <summary>
+    /// 访问结果
+    /// </summary>
+    public WPEventVisitResult visitResult;
+    /// <summary>
+    /// 是否成功
+    /// </summary>
+    public bool isSucceed;
+    /// <summary>
+    /// 金币
+    /// </summary>
+    public int gold;
+    /// <summary>
+    /// 代币
+    /// </summary>
+    public int token;
+    /// <summary>
+    /// 生命球数量
+    /// </summary>
+    public int healingGlobSum;
+    /// <summary>
+    /// 奖励的物品
+    /// </summary>
+    public List<ItemData> itemRewards = new List<ItemData>();
+    /// <summary>
+    /// 角色经验
+    /// </summary>
+    public List<int> charExp = new List<int>();
+    /// <summary>
+    /// 角色消耗的生命值
+    /// </summary>
+    public List<int> charCostHP = new List<int>();
+    /// <summary>
+    /// 是否访问结束
+    /// </summary>
+    public bool isVisitEnd;
+}

@@ -1,0 +1,311 @@
+﻿using System.Collections.Generic;
+using System.Text;
+using UnityEngine;
+
+/// <summary>
+/// 游戏时间工具类 此时间与现实世界时间无关 是游戏系统的时间
+/// </summary>
+public class TimeUtil
+{
+    /// <summary>
+    /// 玩游戏的时间信息
+    /// </summary>
+    public class PlayTimeInfo
+    {
+        public int years;
+        public int months;
+        public int days;
+        public int seconds;
+
+        public PlayTimeInfo()
+        {
+        }
+
+        public PlayTimeInfo(int year, int months, int days, int seconds)
+        {
+            this.years = year;
+            this.months = months;
+            this.days = days;
+            this.seconds = seconds;
+        }
+    }
+
+    private static int m_daySeconds;
+
+    /// <summary>
+    /// 游戏里面的一天 对应的秒数
+    /// </summary>
+    public static int DaySeconds
+    {
+        get
+        {
+            if (m_daySeconds == 0)
+            {
+                m_daySeconds = Script_configConfig.GetScript_config().timeUnit; ;
+            }
+            //
+            //m_daySeconds = 2;
+            //m_daySeconds = 10;
+            //
+            return m_daySeconds;
+        }
+    }
+
+
+    public static int WeekSeconds = WeekDay * DaySeconds;
+    /// <summary>
+    /// 游戏里面的一个月对应多少秒
+    /// </summary>
+    public static int MonthSceonds = MonthDay * DaySeconds;
+    /// <summary>
+    /// 游戏里面的一年对应多少个秒
+    /// </summary>
+    public static int YearSceonds = YearMonth * MonthSceonds;
+    /// <summary>
+    ///  游戏里面的一个月对应多少天
+    /// </summary>
+    public const int MonthDay = 30;
+    /// <summary>
+    ///  游戏里面的一个周对应多少天
+    /// </summary>
+    public const int WeekDay = 7;
+    /// <summary>
+    ///  游戏里面的一个年对应多少月
+    /// </summary>
+    public const int YearMonth = 12;
+    /// <summary>
+    /// 初始秒数
+    /// </summary>
+    public static long InitSecond = 0;
+
+    /// <summary>
+    /// 初始年月日
+    /// </summary>
+    /// <param name="list"></param>
+    public static void InitTime(List<int> list)
+    {
+        long second1 = list[0] * TimeUtil.YearSceonds;
+        long second2 = list[1] * TimeUtil.MonthSceonds;
+        long second3 = list[2] * TimeUtil.DaySeconds;
+        InitSecond = second1 + second2 + second3;
+
+        //Debug.LogError(InitSecond);
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="date">日期_年月日</param>
+    /// <param name="day">日</param>
+    /// <param name="secnd">秒</param>
+    /// <returns></returns>
+    public static bool ReachOnTime(List<int> date, int day = 0, int secnd = 0)
+    {
+        return (int)ScriptTimeSystem.Instance.Second >= ((date[0] * YearMonth + date[1]) * MonthDay + date[2] + day) * DaySeconds + secnd;
+    }
+
+    /// <summary>
+    /// 是否在游戏里面的时间 达到了某一天
+    /// </summary>
+    /// <param name="day"></param>
+    /// <returns></returns>
+    public static bool ReachDay(int day)
+    {
+        return (int)ScriptTimeSystem.Instance.Second >= day * DaySeconds;
+    }
+
+    /// <summary>
+    /// 是否在游戏里面的时间 达到了某一天
+    /// </summary>
+    /// <param name="day"></param>
+    /// <returns></returns>
+    public static bool ReachYear(int year)
+    {
+        return (int)ScriptTimeSystem.Instance.Second >= year * YearSceonds;
+    }
+
+    /// <summary>
+    /// 获取一共多少天
+    /// </summary>
+    /// <returns></returns>
+    public static int GetPlayDays()
+    {
+        return (int)ScriptTimeSystem.Instance.Second / DaySeconds;
+    }
+
+    /// <summary>
+    /// 获取一共多少周
+    /// </summary>
+    /// <returns></returns>
+    public static int GetPlayWeeks()
+    {
+        return (int)ScriptTimeSystem.Instance.Second / WeekSeconds;
+    }
+
+    /// <summary>
+    /// 获取一共多少月
+    /// </summary>
+    /// <returns></returns>
+    public static int GetPlayMonths()
+    {
+        return (int)(ScriptTimeSystem.Instance.Second / MonthSceonds);
+    }
+
+    /// <summary>
+    /// 获取一共多少年
+    /// </summary>
+    /// <returns></returns>
+    public static int GetPlayYears()
+    {
+        m_allSecond = (long)(InitSecond + ScriptTimeSystem.Instance.Second);
+        return (int)(m_allSecond / YearSceonds);
+    }
+    /// <summary>
+    /// 现在日号码
+    /// </summary>
+    public static int NowDayNum
+    {
+        get
+        {
+            return (int)ScriptTimeSystem.Instance.Second % YearSceonds % MonthSceonds / DaySeconds;
+        }
+    }
+
+    /// <summary>
+    /// 现在月号码
+    /// </summary>
+    public static int NowMonthNum
+    {
+        get { return (int)ScriptTimeSystem.Instance.Second % YearSceonds / MonthSceonds; }
+    }
+
+    private static int years;
+    private static int months;
+    private static int days;
+    private static int seconds;
+    private static PlayTimeInfo playTimeInfo = new PlayTimeInfo();
+
+    private static long m_allSecond;
+
+    private static StringBuilder stringBuilder = new StringBuilder();
+
+    private static PlayTimeInfo info;
+
+    /// <summary>
+    /// 获取游戏里的年月日
+    /// </summary>
+    /// <returns></returns>
+    public static PlayTimeInfo GetPlayTimeInfo()
+    {
+        m_allSecond = (long)(InitSecond + ScriptTimeSystem.Instance.Second);
+        days = (int)(m_allSecond / (float)DaySeconds);
+        months = (int)(days / (float)MonthDay);
+        //
+        years = (int)(months / (float)YearMonth)/* + (months % YearMonth == 0 ? 0 : 1)*/;
+        //
+        months = (int)(months % (float)YearMonth) + (months % YearMonth == 0 ? 0 : 1);
+        if (months == 0)
+        {
+            months = 1;
+        }
+        //
+        days = (int)(days % (float)MonthDay) + (days % MonthDay == 0 ? 0 : 1);
+        if (days == 0)
+        {
+            days = 1;
+        }
+        //years = (int)ScriptTimeSystem.Instance.Second / YearSceonds;
+        //months = (int)ScriptTimeSystem.Instance.Second % YearSceonds / MonthSceonds;
+        //days = (int)ScriptTimeSystem.Instance.Second % YearSceonds % MonthSceonds / DaySeconds;
+        //seconds = (int)ScriptTimeSystem.Instance.Second % YearSceonds % MonthSceonds % DaySeconds % DaySeconds;
+        playTimeInfo.years = years;
+        playTimeInfo.months = months;
+        playTimeInfo.days = days;
+        playTimeInfo.seconds = seconds;
+        return playTimeInfo;
+    }
+
+    /// <summary>
+    /// 获取星期
+    /// </summary>
+    /// <returns></returns>
+    public static string GetXQDes()
+    {
+        m_allSecond = (long)(InitSecond + ScriptTimeSystem.Instance.Second);
+        long allDay = m_allSecond / DaySeconds;
+        long temp = allDay % 7;
+        switch (temp)
+        {
+            case 0:
+                return "星期日";
+            case 1:
+                return "星期一";
+            case 2:
+                return "星期二";
+            case 3:
+                return "星期三";
+            case 4:
+                return "星期四";
+            case 5:
+                return "星期五";
+            case 6:
+                return "星期六";
+            default:
+                LogHelperLSK.LogError("计算星期出错, allDay % 7= " + temp);
+                return "星期日";
+        }
+    }
+
+   
+    //2018/08/10 
+    /// <summary>
+    /// 获取日期描述
+    /// </summary>
+    /// <returns></returns>
+    public static string GetTimeDescription()
+    {
+        stringBuilder.Remove(0, stringBuilder.Length);
+
+        info = GetPlayTimeInfo();
+
+        stringBuilder.Append(info.years);
+        stringBuilder.Append("/");
+
+        if (info.months < 10)
+        {
+            stringBuilder.Append("0");
+        }
+        stringBuilder.Append(info.months);
+        stringBuilder.Append("/");
+
+        if (info.days < 10)
+        {
+            stringBuilder.Append("0");
+        }
+        stringBuilder.Append(info.days);
+
+        return stringBuilder.ToString();
+    }
+
+    /// <summary>
+    /// 获取日期描述
+    /// </summary>
+    /// <param name="_time"></param>
+    /// <returns></returns>
+    public static string GetTimeDescription(float _time)
+    {
+        return GetTimeDescription();
+    }
+
+    /// <summary>
+    /// 获取距离下一周需要多少天
+    /// </summary>
+    /// <returns></returns>
+    public static int GetNextWeekNeedDays()
+    {
+        int nowWeek = GetPlayWeeks();
+        int nextWeekNeedSeconds = (nowWeek + 1) * WeekSeconds;
+        int needSecods = nextWeekNeedSeconds - (int)ScriptTimeSystem.Instance.Second;
+        return needSecods / DaySeconds;
+    }
+}

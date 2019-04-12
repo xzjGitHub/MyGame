@@ -1,0 +1,149 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+namespace Altar.View
+{
+    public class ItemCallCharList: MonoBehaviour
+    {
+        private GameObject m_prefab;
+        private Transform m_parent;
+
+        private Dictionary<int,ItemCallInfo> m_callList = new Dictionary<int,ItemCallInfo>();
+
+        private CoroutineUtil m_coroutine;
+
+        private void OnDisable()
+        {
+            StopCortine();
+        }
+
+        private void StopCortine()
+        {
+            if(m_coroutine != null)
+            {
+                if(m_coroutine.Running)
+                {
+                    m_coroutine.Stop();
+                }
+            }
+        }
+
+
+        public void InitComponent()
+        {
+            m_prefab = transform.Find("CharList/Grid/CharItem").gameObject;
+            m_prefab.SetActive(false);
+            m_parent = transform.Find("CharList/Grid");
+        }
+
+        public void InitInfo(Action<int> clickCallBack)
+        {
+            Free();
+            m_callList.Clear();
+            StopCortine();
+            m_coroutine = new CoroutineUtil(InitListInfo(clickCallBack));
+        }
+
+        public IEnumerator InitListInfo(Action<int> clickCallBack)
+        {
+            bool hasClick = false;
+            List<Summon_remains> list = Summon_remainsConfig.GetSummon_Remains();
+            for(int i = 0; i < list.Count; i++)
+            {
+                if(Show(list[i]))
+                {
+                    GameObject obj = GameObjectPool.Instance.GetObject(StringDefine.ObjectPooItemKey.ItemCallChar,m_prefab);
+                    Utility.SetParent(obj,m_parent);
+                    ItemCallInfo info = Utility.RequireComponent<ItemCallInfo>(obj);
+                    info.InitInfo(list[i],clickCallBack);
+                    m_callList[list[i].formulaID] = info;
+
+                    if(!hasClick)
+                    {
+                        info.Click();
+                        hasClick = true;
+                    }
+                    yield return null;
+                }
+            }
+        }
+
+        public void ClickFirst()
+        {
+            foreach(var value in m_callList.Values)
+            {
+                value.Click();
+                break;
+            }
+        }
+
+        public void UpdateCallInfo(int id)
+        {
+            if(m_callList.ContainsKey(id))
+            {
+                m_callList[id].UpdateItemCostInfo();
+            }
+        }
+
+        private bool Show(Summon_remains remains)
+        {
+            if(remains.isHidden == 1)
+            {
+                return true;
+            }
+            for(int i = 0; i < remains.summonFormula.Count; i++)
+            {
+                int have = ItemSystem.Instance.GetItemNumByTemplateID(remains.summonFormula[i][0]);
+                if(have > remains.summonFormula[i][1])
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public void UpdateSelectShow(int id,bool show)
+        {
+            if(m_callList.ContainsKey(id))
+                m_callList[id].UpdateSlectShow(show);
+        }
+
+        public void ClickItemById(int id)
+        {
+            if(m_callList.ContainsKey(id))
+                m_callList[id].Click();
+        }
+
+        public void UpdateNotCallShow(int id,bool show)
+        {
+            if(m_callList.ContainsKey(id))
+                m_callList[id].UpdateNotCallShow(show);
+        }
+
+        public int GetFristKey()
+        {
+            if(m_callList.Count > 0)
+            {
+                foreach(var key in m_callList.Keys)
+                {
+                    return key;
+                }
+            }
+            return 0;
+        }
+
+        public int GetCount()
+        {
+            return m_callList.Count;
+        }
+
+        public void Free()
+        {
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.ItemCallCharItem);
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.ItemCallChar);
+        }
+    }
+}

@@ -1,0 +1,401 @@
+﻿using GameEventDispose;
+using Spine;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// 角色动作操作
+/// </summary>
+public class UICharActionOperation : CharSkeletonOperation
+{
+    public float aspd = 315f;
+    public int num = 3;
+    public List<float> erCSYS;
+    //
+    public int ActionEventEffectSetID { get { return GetActionEventEffectSetID(nowAction, charEffectConfig); } }
+
+    public void Init(UICharBase charBase)
+    {
+        //初始化数据
+        base.InitInfo(charBase);
+        //
+        Transform obj = moveTrans.parent.Find("Test");
+        if (obj != null)
+        {
+            test = obj.gameObject;
+        }
+
+        isLeft = moveTrans.parent.parent.name == LeftTransfromName;
+        //初始化数据 
+        templateID = combatUnit.charAttribute.templateID;
+        //
+        isDie = combatUnit.hp <= 0;
+        startPos = Vector3.zero;
+        //
+        _charRPack = CharRPackConfig.GeCharShowTemplate(templateID);
+        charEffectConfig = CharEffectConfigConfig.GetCharEffectConfig(templateID);
+        //加载模型
+        initSortingOrder = SkeletonTool.GetSkeletonSortingOrder(isLeft, charIndex);
+        //
+        isStartBonePos = true;
+        base.Init(LoadSkeletonRes(_charRPack.charRP, moveTrans, initSortingOrder));
+
+        //添加状态机
+        gameObject.AddComponent<UICharActionPhase>().Init(this);
+
+        CharModuleAction action = isDie ? CharModuleAction.Die : CharModuleAction.Idle;
+        int phaseEffectSetID = GetPhaseEffectSetID(action, charEffectConfig);
+        //播放动作
+        base.PlayAction(action, ActionPlayEnd, phaseEffectSetID);
+    }
+
+    /// <summary>
+    /// 播放角色动作
+    /// </summary>
+    public void PlayAction(string _actionName, bool autoIdle = false)
+    {
+        StartPlayAction(SkeletonTool.GetCharModuleState(_actionName), autoIdle);
+    }
+
+    /// <summary>
+    /// 播放角色动作
+    /// </summary>
+    public void PlayAction(CharModuleAction _action, bool autoIdle = false)
+    {
+        StartPlayAction(_action, autoIdle);
+    }
+
+    /// <summary>
+    /// 播放动作效果
+    /// </summary>
+    /// <param name="info"></param>
+    public void PlayActionEffect(PlayActionEffectInfo info)
+    {
+        new CoroutineUtil(IEPlayAction(info));
+    }
+
+    /// <summary>
+    /// 播放指定动作
+    /// </summary>
+    private IEnumerator IEPlayAction(PlayActionEffectInfo info)
+    {
+        isLastAction = false;
+        _actionTemplate = info.actionEffect;
+        //没有动作直接跳过
+        if (_actionTemplate == null)
+        {
+            yield break;
+        }
+        //
+        int _sortingOrder;
+        bool _isMove = SkeletonTool.IsCheckMove(moveTrans.parent, isLeft, (SkillAnimationPosType)_actionTemplate.skillType,
+            _actionTemplate.CSYS_x, _actionTemplate.CSYS_y, info.targetIndex, out endPos, out _sortingOrder, erCSYS);
+        //靠近敌方
+        if ((SkillAnimationPosType)_actionTemplate.skillType == SkillAnimationPosType.NearEnemy)
+        {
+            endPos += Vector3.right * PlayEffectTool.GetDefenseAmendX(info.FirstEffectResult, info.hitCharUnit);
+        }
+
+        //需要移动
+        if (_isMove)
+        {
+            if (CombatSystem.Instance.isTestSkill)
+            {
+                LogHelperLSK.Log("开始移动");
+            }
+            CharMove();
+            //    StartCoroutine(IEUpdateCharMove());
+            while (isMove)
+            {
+                yield return null;
+            }
+            renderer.sortingOrder = _sortingOrder;
+        }
+        if (CombatSystem.Instance.isTestSkill)
+        {
+            LogHelperLSK.Log("播放动作" + _actionTemplate.charActionName);
+        }
+        //移动完成、不需要移动——播放技能动作
+        PlayAction(_actionTemplate.charActionName);
+        isLastAction = info.isLastAction;
+    }
+
+    /// <summary>
+    /// 重置位置
+    /// </summary>
+    public void ResetPos()
+    {
+        isLastAction = false;
+        isMove = false;
+        //     moveTransform.localScale = Vector3.one * 36;
+        endPos = startPos;
+        renderer.sortingOrder = initSortingOrder;
+
+        moveTrans.localPosition = Vector3.zero;
+        //
+        CharModuleAction action = isDie ? CharModuleAction.Die : CharModuleAction.Idle;
+        int phaseEffectSetID = GetPhaseEffectSetID(action, charEffectConfig);
+        //播放动作
+        base.PlayAction(action, ActionPlayEnd, phaseEffectSetID);
+        return;
+        new CoroutineUtil(IEResetPos());
+    }
+
+    /// <summary>
+    /// 更新角色移动
+    /// </summary>
+    private IEnumerator IEUpdateCharMove()
+    {
+        moveTrans.localPosition = endPos;
+        isMove = false;
+        skeletonAnimation.timeScale = 1.0f;
+        yield return null;
+    }
+
+    /// <summary>
+    /// 重置位置
+    /// </summary>
+    private IEnumerator IEResetPos()
+    {
+        isLastAction = false;
+        isMove = false;
+        //     moveTransform.localScale = Vector3.one * 36;
+        endPos = startPos;
+        renderer.sortingOrder = initSortingOrder;
+        if (Vector3.SqrMagnitude(moveTrans.localPosition - startPos) > 100)
+        {
+            meshRenderer.enabled = false;
+            moveTrans.localPosition = Vector3.zero;
+            //播放动作
+            base.PlayAction(CharModuleAction.Idle, ActionPlayEnd, GetPhaseEffectSetID(CharModuleAction.Idle, charEffectConfig));
+            //    StartPlayAction(CharModuleAction.Fanhui, true);
+            meshRenderer.enabled = true;
+            yield break;
+        }
+        moveTrans.localPosition = Vector3.zero;
+        //
+        CharModuleAction action = isDie ? CharModuleAction.Die : CharModuleAction.Idle;
+        int phaseEffectSetID = GetPhaseEffectSetID(action, charEffectConfig);
+        //播放动作
+        base.PlayAction(action, ActionPlayEnd, phaseEffectSetID);
+    }
+
+    /// <summary>
+    /// 角色移动
+    /// </summary>
+    /// <returns></returns>
+    private void CharMove()
+    {
+        switch (charMoveType)
+        {
+            case CharMoveType.Line:
+                isMove = true;
+                StartPlayAction(CharModuleAction.Atk_chongci, false, Atk_chongciPlayEnd);
+                break;
+            case CharMoveType.Teleport:
+            default:
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 动作播放结束
+    /// </summary>
+    private void Atk_chongciPlayEnd(TrackEntry trackentry)
+    {
+        moveTrans.localPosition = endPos;
+        isMove = false;
+        skeletonAnimation.timeScale = 1.0f;
+        EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.PhaseEndEffect, teamID, charID, (object)null);
+    }
+
+    /// <summary>
+    /// 切换状态_进入状态
+    /// </summary>
+    private void StartPlayAction(CharModuleAction _action, bool _autoIdle = false)
+    {
+        isAutoIdle = _autoIdle;
+        isDie = _action == CharModuleAction.Die;
+        if (nowAction == _action)
+        {
+            return;
+        }
+        //播放角色动作
+        if (_action == CharModuleAction.Default)
+        {
+            return;
+        }
+        AddCallBackEvent();
+        nowAction = _action;
+        int phaseEffectSetID = GetPhaseEffectSetID(_action, charEffectConfig);
+        //播放动作
+        base.PlayAction(_action, ActionPlayEnd, phaseEffectSetID);
+    }
+
+    /// <summary>
+    /// 切换状态_进入状态
+    /// </summary>
+    private void StartPlayAction(CharModuleAction _action, bool _autoIdle, Spine.AnimationState.TrackEntryDelegate trackentry = null)
+    {
+        isAutoIdle = _autoIdle;
+        isDie = _action == CharModuleAction.Die;
+        if (nowAction == _action)
+        {
+            return;
+        }
+        //播放角色动作
+        if (_action == CharModuleAction.Default)
+        {
+            return;
+        }
+        AddCallBackEvent();
+        nowAction = _action;
+        int phaseEffectSetID = GetPhaseEffectSetID(_action, charEffectConfig);
+        //播放动作
+        base.PlayAction(_action, trackentry, phaseEffectSetID);
+    }
+
+    /// <summary>
+    /// 添加回调事件
+    /// </summary>
+    private void AddCallBackEvent()
+    {
+        //添加事件
+        OnPlaySkill = OnCallPlaySkill;
+        OnPlayEffectObj1 = OnCallPlayEO;
+        OnPlayEffectObj2 = OnCallPlayEO;
+        OnPlayEffectObj3 = OnCallPlayEO;
+        OnPlayEffectObj4 = OnCallPlayEO;
+        OnPlayHit = OnCallPlayHit;
+        OnPlayEvent1 = OnCallPlayEvent;
+        OnPlayEvent2 = OnCallPlayEvent;
+        OnPlayEvent3 = OnCallPlayEvent;
+        OnPlayEnd = OnCallPlayEnd;
+        OnPlayFly = OnCallPlayFly;
+    }
+
+
+    /// <summary>
+    /// 动作播放结束
+    /// </summary>
+    /// <param name="trackentry"></param>
+    private void ActionPlayEnd(TrackEntry trackentry)
+    {
+        // skeletonAnimation.state.Complete -= ActionPlayEnd;
+
+        EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.PhaseEndEffect, teamID, charID, (object)null);
+        if (isLastAction && IsAtkAction(trackentry.Animation.Name))
+        {
+            isAtkActionPlayOk = true;
+            ResetPos();
+            return;
+        }
+        // return;
+        if (isAutoIdle)
+        {
+            int phaseEffectSetID = GetPhaseEffectSetID(CharModuleAction.Idle, charEffectConfig);
+            //播放动作
+            base.PlayAction(CharModuleAction.Idle, ActionPlayEnd, phaseEffectSetID);
+        }
+    }
+
+
+
+    #region 动作事件托管
+    private void OnCallPlayFly(object param)
+    {
+        isStartMove = true;
+    }
+    private void OnCallPlayEnd(object param)
+    {
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEffect, CombatCharActionEvent.End, (object)null);
+    }
+    private void OnCallPlayEvent(object param)
+    {
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEffect, CombatCharActionEvent.Event1, param);
+    }
+    private void OnCallPlayHit(object param)
+    {
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEffect, CombatCharActionEvent.Hit, (object)null);
+    }
+    private void OnCallPlayEO(object param)
+    {
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEffect, CombatCharActionEvent.EffectObj1, param);
+    }
+    private void OnCallPlaySkill(object param)
+    {
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEffect, CombatCharActionEvent.Skill, (object)null);
+    }
+    #endregion
+
+    public void PlayEffect(string effectRP, string effectName)
+    {
+        PlayEffectTool.PlayEffect(PlayEffectTool.CreateEffectInfo(effectRP, effectName, moveTrans, HitSortingOrder), OnCallHitPlayEnd);
+    }
+    private void OnCallHitPlayEnd(UnityEngine.Object playeffect)
+    {
+        if ((playeffect as UIPlayEffect).IsAutoDestory)
+        {
+            DestroyImmediate(playeffect);
+        }
+    }
+
+    private void OnDestroy()
+    {
+    }
+
+    //
+    private GameObject test;
+    //
+    private int templateID;
+    private int initSortingOrder;
+    //
+    private bool isMove;
+    private bool isDie;
+    private bool isLastAction;
+    private bool isLeft;
+    private bool isAutoIdle;
+    private bool isStartMove;
+    private readonly CharMoveType charMoveType = CharMoveType.Line;
+    //
+    private Vector3 endPos;
+    private Vector3 startPos;
+    //
+    private CharRPack _charRPack;
+    private Action_template _actionTemplate;
+    private CharEffectConfig charEffectConfig;
+}
+
+/// <summary>
+/// 角色动作操作
+/// </summary>
+public enum CharActionOperation
+{
+    Init,
+    Fade,
+    FadeOut,
+    Action,
+    ResetPos,
+    ActionEffect,
+    ActonEventEffect,
+    PhaseStartEffect,
+    PhaseEndEffect,
+    HPCost,
+    HPCostShowEnd,
+    TestShow,
+    Hit,
+    Idle,
+}
+
+public enum CharMoveType
+{
+    /// <summary>
+    /// 直线
+    /// </summary>
+    Line = 0,
+    /// <summary>
+    /// 传送
+    /// </summary>
+    Teleport = 1,
+}

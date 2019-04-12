@@ -1,0 +1,240 @@
+﻿using System.Collections.Generic;
+using Barrack.Data;
+using UnityEngine;
+using UnityEngine.UI;
+using Char.View;
+
+namespace Barrack.View
+{
+    public class CharTrain: MonoBehaviour
+    {
+        private GameObject m_trainTip;
+        private GameObject m_bar;
+
+        private Text m_manaCost;
+        private Text m_workChar;
+        private Text m_dayAdd;
+
+        private CharList m_charList;
+        private CharTrainList m_charTrainList;
+        private CharTrainTip m_trainTipInfo;
+        private TogGroup m_tog;
+
+        private bool m_hasInit;
+        private int m_currentSlect;
+        private PlayerType m_currentType = PlayerType.None;
+
+        private void InitComponent()
+        {
+            m_bar = transform.Find("Left/ScrollBar").gameObject;
+
+            m_manaCost = transform.Find("Left/Mana/Content/Num").GetComponent<Text>();
+            m_workChar = transform.Find("Left/WorkChar/Num").GetComponent<Text>();
+            m_dayAdd = transform.Find("Left/DayAdd/Num").GetComponent<Text>();
+
+            GameObject charListObj = GameObject.Instantiate<GameObject>(
+                Resources.Load<GameObject>("UI/Prefab/CharList"));
+            Transform parent = transform.Find("Right/CharListParent");
+            Utility.SetParent(charListObj,parent);
+            m_charList = Utility.RequireComponent<CharList>(charListObj);
+            m_charList.InitComponent();
+
+            m_charTrainList = Utility.RequireComponent<CharTrainList>(transform.Find("Left/TrainCharList").gameObject);
+            m_charTrainList.InitComponent(ClickTrainItemCallBack);
+
+            m_trainTip = transform.Find("TrainTip").gameObject;
+            m_trainTipInfo = Utility.RequireComponent<CharTrainTip>(m_trainTip);
+            m_trainTipInfo.InitComponent(ClickEndTrainCallBack,ClickUseTokenCallBack,TrainTipCloseCallBack);
+            m_trainTip.SetActive(false);
+
+            m_tog = transform.Find("Right/Tag").GetComponent<TogGroup>();
+            m_tog.Init(ClickTag,-1);
+
+
+            UpdateDayAdd();
+        }
+
+        public void InitInfo()
+        {
+            if(!m_hasInit)
+            {
+                InitComponent();
+                m_hasInit = true;
+            }
+
+            ControllerCenter.Instance.BarrackController.TrainCharChange += OnTrainChange;
+            ControllerCenter.Instance.BarrackController.CharCanWork += UpdateManaNotEnoughtInfo;
+
+            m_tog.ClickTog(0);
+
+            List<TraniCharInfo> list = BarrackSystem.Instance.GetTrainChars();
+            m_charTrainList.InitList(list);
+
+            UpdateManaCost();
+            UpdateTrainChar();
+            UpdateBarShow(m_charTrainList.GetTrainCharCount() > 0);
+        }
+
+        private void OnDisable()
+        {
+            Free();
+            ResetTrainCharItem();
+            ControllerCenter.Instance.BarrackController.TrainCharChange -= OnTrainChange;
+            ControllerCenter.Instance.BarrackController.CharCanWork -= UpdateManaNotEnoughtInfo;
+        }
+
+        public void Free()
+        {
+            if(m_charList != null)
+                m_charList.FreePool();
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.TrainCharItem);
+        }
+
+        private void ClickTag(int index)
+        {
+            if(m_currentType == (PlayerType)index)
+            {
+                return;
+            }
+            m_charList.FreePool();
+
+            List<CharAttribute> charList = CharSystem.Instance.GetCharinCharList((PlayerType)index);
+            m_charList.InitList(charList,ClickCharAction,null);
+
+            m_currentType = (PlayerType)index;
+        }
+
+        private void UpdateManaNotEnoughtInfo(int charId,bool suc)
+        {
+            m_charList.UpdateManaNotEnoughShowInfo(charId,suc);
+        }
+
+        /// status（1：添加 2：结束 4：取消
+        private void OnTrainChange(TraniCharInfo charInfo,int status)
+        {
+            switch(status)
+            {
+                case 1:
+                    OnAddTrainChar(charInfo);
+                    break;
+                case 2:
+                case 4:
+                    OnEndTrainChar(charInfo);
+                    break;
+            }
+            UpdateManaCost();
+            UpdateTrainChar();
+            UpdateBarShow(m_charTrainList.GetTrainCharCount() > 0);
+        }
+
+        private void OnAddTrainChar(TraniCharInfo charInfo)
+        {
+            m_charTrainList.AddChar(charInfo);
+        }
+
+        private void OnEndTrainChar(TraniCharInfo charInfo)
+        {
+            m_charTrainList.RemoveChar(charInfo.CharId);
+            m_charList.UpdateCharStatusShow(charInfo.CharId,CharStatus.Idle);
+            CharAttribute attr = CharSystem.Instance.GetAttribute(charInfo.CharId);
+            m_charList.UpdateLevel(charInfo.CharId,attr.charLevel);
+        }
+
+        private void UpdateManaCost()
+        {
+            float singleCost = ControllerCenter.Instance.BarrackController.GetManaCost();
+            int trainNum = BarrackSystem.Instance.GetTrainChars().Count;
+            m_manaCost.text = ((int)singleCost * trainNum).ToString();
+        }
+
+        private void UpdateTrainChar()
+        {
+            int current = ControllerCenter.Instance.BarrackController.GetNowTrainChar();
+            int max = ControllerCenter.Instance.BarrackController.GetMaxTrainChar();
+            m_workChar.text = current + "/" + max;
+        }
+
+        private void UpdateDayAdd()
+        {
+            float dayAdd = ControllerCenter.Instance.BarrackController.GetDayAddExp();
+            m_dayAdd.text = dayAdd.ToString();
+        }
+
+        private void UpdateBarShow(bool show)
+        {
+            m_bar.SetActive(show);
+        }
+
+        private void ResetTrainCharItem()
+        {
+            if(m_currentSlect != 0)
+            {
+                m_charTrainList.UpdateSelectShow(m_currentSlect,false);
+                m_currentSlect = 0;
+            }
+        }
+
+        private void ClickCharAction(CharAttribute attr)
+        {
+            if(attr.Status != CharStatus.Idle)
+            {
+                //TipManager.Instance.ShowTip("该角色正在训练中");
+                ClickTrainItemCallBack(attr.charID);
+                return;
+            }
+            if(ControllerCenter.Instance.BarrackController.CanTrain(attr.charLevel))
+            {
+                ControllerCenter.Instance.BarrackController.TrainChar(attr.charID);
+                m_charList.UpdateCharStatusShow(attr.charID,CharStatus.Train);
+            }
+        }
+
+        private void ClickTrainItemCallBack(int charId)
+        {
+            CharAttribute attr = CharSystem.Instance.GetAttribute(charId);
+            int nextNeed = ControllerCenter.Instance.BarrackController.GetNextLevelExp(attr);
+            float dayAdd = ControllerCenter.Instance.BarrackController.GetDayAddExp();
+            float reaminExp = nextNeed - attr.charExp;
+            int remianDay = (int)(reaminExp / dayAdd) + 1;
+            float manaCost = ControllerCenter.Instance.BarrackController.GetManaCost();
+            m_trainTipInfo.UpdateInfo(attr.char_template.HeadIcon,dayAdd,manaCost,remianDay);
+            m_trainTip.SetActive(true);
+
+            if(m_currentSlect != 0)
+            {
+                m_charTrainList.UpdateSelectShow(m_currentSlect,false);
+            }
+            m_currentSlect = charId;
+            m_charTrainList.UpdateSelectShow(m_currentSlect,true);
+        }
+
+        private void ClickEndTrainCallBack()
+        {
+            ControllerCenter.Instance.BarrackController.CancelTrain(m_currentSlect);
+            m_trainTip.SetActive(false);
+            m_charList.UpdateCharStatusShow(m_currentSlect,CharStatus.Idle);
+
+            ResetTrainCharItem();
+        }
+
+        private void ClickUseTokenCallBack()
+        {
+            if(ControllerCenter.Instance.BarrackController.CanUseToken())
+            {
+                ControllerCenter.Instance.BarrackController.UseTokenToTrain(m_currentSlect);
+                m_trainTip.SetActive(false);
+
+                ResetTrainCharItem();
+            }
+            else
+            {
+                TipManager.Instance.ShowTip("代币不足");
+            }
+        }
+
+        private void TrainTipCloseCallBack()
+        {
+            ResetTrainCharItem();
+        }
+    }
+}

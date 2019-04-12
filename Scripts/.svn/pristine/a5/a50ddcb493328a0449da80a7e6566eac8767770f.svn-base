@@ -1,0 +1,128 @@
+﻿using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// 实例化对象对象池
+/// </summary>
+/// <typeparam name="T"></typeparam>
+public class ObjectPool<T> where T : new() {
+    private static ObjectPool<T> Instance_;
+    public static ObjectPool<T> Instance
+    {
+        get
+        {
+            if( Instance_ == null ) {
+                Instance_ = new ObjectPool<T>();
+                return Instance_;
+            }
+            else {
+                return Instance_;
+            }
+        }
+    }
+
+    // 对象池的大小  
+    private const int MIN_OBJECTS_NUM = 6;
+    // 对象池最大的大小      
+    private const int MAX_OBJECTS_NUM = 24;
+    //存放对象池中对象的List
+    private List<PoolObject> ObjectsList = new List<PoolObject>();
+
+    private ObjectPool() {
+        //for( int i = 0; i < MIN_OBJECTS_NUM; i++ ) {
+        //    ObjectsList.Add( new PoolObject( new T() ) );
+        //}
+        LogHelperLSK.Log("11111");
+    }
+
+    /// <summary>
+    /// 获得一个空闲的对象
+    /// </summary>
+    /// <returns></returns>
+    public T getObject() {
+        // 确保对象池己被创建     
+        if( ObjectsList == null ) {
+            return default(T);
+        }
+
+        T obj = findFreeObject();
+        if( obj == null ) {
+            PoolObject temp = new PoolObject( new T() );
+            temp.Busy = true;
+            ObjectsList.Add( temp );
+            //if( ObjectsList.Count > MAX_OBJECTS_NUM ) {
+            //    Debugger.LogWarning( "对象池中的对象已超出上限，当前为：" + ObjectsList.Count );
+            //}
+            obj = temp.Objection;
+        }
+
+        return obj;
+    }
+
+    /// <summary>
+    /// 从池中获得一个空闲的对象
+    /// </summary>
+    /// <returns></returns>
+    private T findFreeObject() {
+        T obj = default(T);
+
+        for( int i = 0; i < ObjectsList.Count; i++ ) {
+            if( !ObjectsList[i].Busy ) {
+                ObjectsList[i].Busy = true;
+                obj = ObjectsList[i].Objection;
+                break;
+            }
+        }
+        return obj;  
+    }
+
+    /// <summary>
+    /// 释放对象
+    /// </summary>
+    /// <param name="obj"></param>
+    public void ReleseObject( T obj ) { 
+        if( ObjectsList == null ) {
+            return;
+        }
+        for(int i=0;i<ObjectsList.Count;i++ ) {
+            if( ObjectsList [i].Objection.GetHashCode()== obj.GetHashCode() ) {
+                ObjectsList[i].Busy = false;
+                break;
+            }
+        }
+    }
+ 
+    /// <summary>
+    /// 关闭对象池
+    /// </summary>
+    public void closeObjectPool() {
+        // 确保对象池存在，如果不存在，返回     
+        if( ObjectsList == null ) {
+            return;
+        }
+
+        for(int i=0;i< MAX_OBJECTS_NUM && i < ObjectsList.Count; i++ ) {
+            ObjectsList[i].Busy = false;
+        }
+        if( ObjectsList.Count>MAX_OBJECTS_NUM) {
+            ObjectsList.RemoveRange( MAX_OBJECTS_NUM, ObjectsList.Count - MAX_OBJECTS_NUM );
+        }
+
+        //ObjectsList.Clear();
+    }
+
+    /// <summary>
+    /// 对象池对象，标记了是否繁忙
+    /// </summary>
+    private class PoolObject {
+        //对象 
+        public T Objection = default(T);
+        //此对象是否正在使用
+        public bool Busy = false;     
+
+        public PoolObject( T objection ) {
+            Objection = objection;
+        }
+    }
+
+}

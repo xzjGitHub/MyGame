@@ -1,0 +1,423 @@
+﻿using GameEventDispose;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UICombatUIInfo : MonoBehaviour
+{
+    /// <summary>
+    /// 初始化
+    /// </summary>
+    /// <param name="isTest"></param>
+    public void Init(bool isTest = false)
+    {
+        this.isTest = isTest;
+        if (isTest)
+        {
+            return;
+        }
+        combatSystem = GameModules.Find(ModuleName.combatSystem) as CombatSystem;
+        currentMP = (int)combatSystem.CurrentPower;
+        //
+        GetObj();
+        //
+        if (combat_Config == null)
+        {
+            combat_Config = Combat_configConfig.GetCombat_config();
+        }
+
+        if (combatSystem != null)
+        {
+            //初始化角色信息显示
+            List<CombatUnit> combatUnits = combatSystem.PlayerTeamInfo.combatUnits.OrderBy(a => a.initIndex).ToList();
+            int count = combatSystem.PlayerTeamInfo.combatUnits.Count;
+            foreach (var item in combatUnits)
+            {
+                _charInfoShows.Add(charInfoObj.transform.GetChild(item.initIndex).gameObject.AddComponent<UICharInfoShow>());
+                _charInfoShows.Last().CallUpdateMp = CallBackUpdateMPValue;
+                _charInfoShows.Last().CallAllIncentive = CallBackAllIncentive;
+                _charInfoShows.Last().CallResetIncentive = CallBackResetIncentive;
+                _charInfoShows.Last().CallUseManualSkill = CallBackUseManualSkil;
+                _charInfoShows.Last().CallCancelManualSkill = CallBackCancelManualSkill;
+                _charInfoShows.Last().CallAllIncentiveValidity = CallBackAllIncentiveValidity;
+                _charInfoShows.Last().CallResetOtherIncentive = CallBackResetOtherIncentive;
+                _charInfoShows.Last().Init(item, currentMP);
+                _charInfoShows.Last().gameObject.SetActive(true);
+            }
+
+            //for (int i = 0; i < count; i++)
+            //{
+            //    _charInfoShows[i].Init(combatUnits[i], currentMP);
+            //    _charInfoShows[i].gameObject.SetActive(true);
+            //}
+            //
+            RoundCountdown.Init(isTest);
+            exitCombat.Init(combat_Config.retreatReq);
+        }
+        UpdateAspdValue(1);
+    }
+
+    /// <summary>
+    /// 战斗事件
+    /// </summary>
+    /// <param name="arg1"></param>
+    /// <param name="arg2"></param>
+    private void OnCombatEvent(PlayCombatStage arg1, object arg2)
+    {
+        combatSystem = GameModules.Find(ModuleName.combatSystem) as CombatSystem;
+        switch (arg1)
+        {
+            case PlayCombatStage.CreateCombat:
+                UpdateAspdValue(1);
+                break;
+            case PlayCombatStage.Opening:
+                break;
+            case PlayCombatStage.CombatPrepare:
+                break;
+            case PlayCombatStage.CreateRound:
+                if (isTest)
+                {
+                    return;
+                }
+                _useSkillIndexs.Clear();
+                foreach (UICharInfoShow item in _charInfoShows)
+                {
+                    item.CreateRoundUpdateInfo();
+                }
+                //
+                currentMP = (int)combatSystem.CurrentPower;
+                _charUseSkills.Clear();
+                //
+                if (gameObject.activeInHierarchy == false)
+                {
+                    gameObject.SetActive(true);
+                }
+                //
+                foreach (UICharInfoShow item in _charInfoShows)
+                {
+                    item.RoundUpdateShow(currentMP);
+                }
+                StartCombatButton.gameObject.SetActive(true);
+                charInfoObj.SetActive(true);
+                //
+                EnergyInfo.UpdateShow(currentMP, (int)combatSystem.MaxEnergy);
+                //
+                exitCombat.UpdateShow(combatSystem.NowRound);
+                //
+                StartCombatButton.enabled = true;
+                RoundInfo.UpateShow(combatSystem.NowRound);
+                maskObj.SetActive(false);
+                break;
+            case PlayCombatStage.ChooseSkill:
+                EnergyInfo.UpdateShow((int)combatSystem.CurrentPower, (int)combatSystem.MaxEnergy);
+                break;
+            case PlayCombatStage.ImmediateSkillEffect:
+                LogHelperLSK.LogError("PlayCombatStage.ImmediateSkillEffect");
+                break;
+            case PlayCombatStage.RoundInfo:
+                gameObject.SetActive(false);
+                StartCombatButton.gameObject.SetActive(false);
+                charInfoObj.SetActive(false);
+                EnergyInfo.gameObject.SetActive(false);
+                break;
+            case PlayCombatStage.CombatEnd:
+                UpdateAspdValue(1);
+                if (isTest)
+                {
+                    return;
+                }
+                ScriptTimeSystem.Instance.StartTiming();
+                break;
+            default:
+                break;
+        }
+    }
+    /// <summary>
+    /// 点击胜利
+    /// </summary>
+    private void OnClickWin()
+    {
+        combatSystem = GameModules.Find(ModuleName.combatSystem) as CombatSystem;
+        combatSystem.Win();
+    }
+    /// <summary>
+    /// 点击失败
+    /// </summary>
+    private void OnClickLoser()
+    {
+        combatSystem = GameModules.Find(ModuleName.combatSystem) as CombatSystem;
+        combatSystem.Loser();
+    }
+    /// <summary>
+    /// 点击开始战斗
+    /// </summary>
+    private void OnClickStartCombat()
+    {
+        StartCreateRound();
+    }
+    /// <summary>
+    /// 点击速度
+    /// </summary>
+    private void OnClickAspd()
+    {
+        UpdateAspdValue((int)Time.timeScale % 3 + 1);
+    }
+
+    /// <summary>
+    /// 更新游戏速度
+    /// </summary>
+    /// <param name="_timeScale"></param>
+    private void UpdateAspdValue(float _timeScale)
+    {
+        aspdText.text = string.Format(speedStr, _timeScale);
+        Time.timeScale = _timeScale;
+    }
+
+    /// <summary>
+    /// 更新魔力
+    /// </summary>
+    /// <param name="value"></param>
+    private void CallBackUpdateMPValue(int value)
+    {
+        currentMP += value;
+        currentMP = Mathf.Min(currentMP, (int)combatSystem.MaxEnergy);
+        //
+        EnergyInfo.UpdateShow(currentMP, (int)combatSystem.MaxEnergy);
+        foreach (UICharInfoShow item in _charInfoShows)
+        {
+            item.MPUpdateShow(currentMP);
+        }
+    }
+    /// <summary>
+    /// 回调全体激励
+    /// </summary>
+    /// <param name="info"></param>
+    private void CallBackAllIncentive(int incentiveFromIndex, bool isIncentive)
+    {
+        foreach (UICharInfoShow item in _charInfoShows)
+        {
+            item.UpdateAllIncentiveShow(incentiveFromIndex, isIncentive);
+        }
+    }
+    /// <summary>
+    /// 重置激励
+    /// </summary>
+    /// <param name="index"></param>
+    private void CallBackResetIncentive(int index)
+    {
+        foreach (UICharInfoShow item in _charInfoShows)
+        {
+            item.ResetIncentive(index);
+        }
+    }
+    /// <summary>
+    /// 使用手动技能回调
+    /// </summary>
+    /// <param name="charIndex"></param>
+    /// <returns></returns>
+    private int CallBackUseManualSkil(int charIndex)
+    {
+        _useSkillIndexs.Remove(charIndex);
+        _useSkillIndexs.Add(charIndex);
+        return _useSkillIndexs.Count - 1;
+    }
+    private int CallBackCancelManualSkill(int charIndex)
+    {
+        _useSkillIndexs.Remove(charIndex);
+        return _useSkillIndexs.Count - 1;
+    }
+
+    /// <summary>
+    /// 全体激励生效回调
+    /// </summary>
+    /// <param name="value"></param>
+    private void CallBackAllIncentiveValidity(int value)
+    {
+        foreach (UICharInfoShow item in _charInfoShows)
+        {
+            item.AllIncentiveValidity(value);
+        }
+    }
+    /// <summary>
+    /// 重置其他激励
+    /// </summary>
+    /// <param name="value"></param>
+    private void CallBackResetOtherIncentive(int value)
+    {
+        foreach (UICharInfoShow item in _charInfoShows)
+        {
+            item.ResetOtherIncentive(value);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        Time.timeScale = 1f;
+        //
+        EventDispatcher.Instance.CombatEvent.RemoveEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatEvent);
+    }
+    //获得组件
+    private void GetObj()
+    {
+        if (isFirst)
+        {
+            return;
+        }
+        //
+        Transform trans = transform;
+        Transform up = trans.Find("Up");
+        Transform mid = trans.Find("Mid");
+        Transform down = trans.Find("Down");
+        maskObj = transform.Find("Mask").gameObject;
+        RoundInfo = up.Find("Round").gameObject.AddComponent<UIRoundInfo>();
+        //
+        RoundCountdown = mid.Find("CoolDownTime").gameObject.AddComponent<UIRoundCountdown>();
+        RoundCountdown.CallTimeOver = CallBackTimeOver;
+        //
+        EnergyInfo = down.Find("Energy").gameObject.AddComponent<UIEnergyInfo>();
+        charInfoObj = down.Find("CharInfo").gameObject;
+        //
+        exitCombat = up.Find("Exit").gameObject.AddComponent<UIExitCombat>();
+        //
+        StartCombatButton = down.Find("Start").GetComponent<Button>();
+        winButton = mid.Find("Win").GetComponent<Button>();
+        loserButton = mid.Find("Loser").GetComponent<Button>();
+        aspdButton = up.Find("AspdButton").GetComponent<Button>();
+        aspdText = aspdButton.transform.Find("Text").GetComponent<Text>();
+        //
+        aspdButton.onClick.AddListener(OnClickAspd);
+        StartCombatButton.onClick.AddListener(OnClickStartCombat);
+        winButton.onClick.AddListener(OnClickWin);
+        loserButton.onClick.AddListener(OnClickLoser);
+        //
+        EventDispatcher.Instance.CombatEvent.AddEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatEvent);
+        //
+        isFirst = true;
+    }
+
+    /// <summary>
+    /// 时间用完回调
+    /// </summary>
+    private void CallBackTimeOver()
+    {
+        maskObj.SetActive(true);
+        StartCreateRound();
+    }
+
+    /// <summary>
+    /// 开始创建回合
+    /// </summary>
+    private void StartCreateRound()
+    {
+        //todo 未做等待期间选择的技能
+        useSkillInfos.Clear();
+        while (_useSkillIndexs.Count>0)
+        {
+            useSkillInfos.Add(_charInfoShows.Find(a=>a.Index== _useSkillIndexs[0]).UseSkillInfo);
+            _useSkillIndexs.RemoveAt(0);
+            continue;
+        }
+        //List<PlayerSkillInfo> skillInfos = new List<PlayerSkillInfo>();
+        //int index = 0;
+        //foreach (KeyValuePair<int, int> item in _charUseSkills)
+        //{
+        //    CombatUnit combatUnit = combatSystem.PlayerTeamInfo.combatUnits.Find(a => a.initIndex == item.Key);
+        //    skillInfos.Add(new PlayerSkillInfo(item.Value, combatUnit));
+        //    index++;
+        //}
+        //  EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, CombatStage.UseManualSkill, (object)useSkillInfos);
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, CombatStage.StartRound, (object)useSkillInfos);
+    }
+
+    //
+    private int currentMP;
+    //
+    private GameObject maskObj;
+    private GameObject charInfoObj;
+    private UIRoundInfo RoundInfo;
+    private UIRoundCountdown RoundCountdown;
+    private UIEnergyInfo EnergyInfo;
+    private UIExitCombat exitCombat;
+    private List<UICharInfoShow> _charInfoShows = new List<UICharInfoShow>();
+    //
+    private readonly Image backImage;
+    private Button StartCombatButton;
+    private Button winButton;
+    private Button loserButton;
+    private Button aspdButton;
+    private Text aspdText;
+    //
+    private readonly int backRoundNum;
+    //激励信息
+    private readonly int incentiveIndex = -1;
+    private readonly int incentiveType = 0;
+    //
+    private bool isFirst;
+    private bool isTest;
+    private Dictionary<int, int> _charUseSkills = new Dictionary<int, int>();
+    private List<UseManualSkillInfo> useSkillInfos = new List<UseManualSkillInfo>();
+    private List<int> _useSkillIndexs = new List<int>();
+    //
+    private const string speedStr = "×{0}";
+    //
+    private CombatSystem combatSystem;
+    private Combat_config combat_Config;
+}
+
+/// <summary>
+/// 使用手动技能信息
+/// </summary>
+public class UseManualSkillInfo
+{
+    public bool IsSelect
+    {
+        get { return isSelect; }
+    }
+    /// <summary>
+    /// 是否激励
+    /// </summary>
+    public bool isIncentive;
+    /// <summary>
+    /// 激励来源
+    /// </summary>
+    public int incentiveFromIndex;
+    /// <summary>
+    /// 角色索引
+    /// </summary>
+    public int charIndex;
+    /// <summary>
+    /// 选中索引
+    /// </summary>
+    public int selectIndex;
+    /// <summary>
+    /// 手动技能ID
+    /// </summary>
+    public int manualSkillID;
+
+
+    public void ResetSkill()
+    {
+        manualSkillID = 0;
+        isSelect = false;
+        selectIndex = 0;
+    }
+
+    /// <summary>
+    /// 使用技能
+    /// </summary>
+    public void UseSkill(bool isIncentive, int incentiveIndex, int charIndex, int manualSkillID, int selectIndex)
+    {
+        isSelect = true;
+        this.isIncentive = isIncentive;
+        incentiveFromIndex = incentiveIndex;
+        this.charIndex = charIndex;
+        this.manualSkillID = manualSkillID;
+        this.selectIndex = selectIndex;
+    }
+
+    /// <summary>
+    /// 是否选择
+    /// </summary>
+    private bool isSelect;
+}

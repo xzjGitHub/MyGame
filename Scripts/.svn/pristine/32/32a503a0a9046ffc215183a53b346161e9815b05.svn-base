@@ -1,0 +1,292 @@
+﻿using System.Collections.Generic;
+using Comomon.EquipList;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace WorkShop.EquipResearch.View
+{
+    public class EquipResearch: MonoBehaviour
+    {
+        private GameObject m_viewObj;
+        private GameObject m_resTipObj;
+        private GameObject m_endObj;
+
+        private Text m_researchCount;
+        private Text m_researchEff;
+        private Text m_manaCost;
+        private Text m_charNum;
+
+        private EquipList m_equipList;
+        private EquipResearchList m_equipResearchList;
+        private ViewInfo m_viewInfo;
+        private ResTipPanel m_resTip;
+        private ResEndTipPanel m_endTip;
+
+        private TogGroup m_tog;
+        private EquipPanelType m_currenType = EquipPanelType.None;
+
+        private bool m_hasInit;
+        private ItemAttribute m_attr;
+        private string m_id;
+
+        
+        private void InitComponent()
+        {
+
+            m_equipResearchList = Utility.RequireComponent<EquipResearchList>(transform.Find("Left/ResList").gameObject);
+            m_equipResearchList.InitComponent();
+
+            m_viewObj = transform.Find("ViewInfo").gameObject;
+            m_viewObj.SetActive(false);
+            m_viewInfo = Utility.RequireComponent<ViewInfo>(m_viewObj);
+            m_viewInfo.InitComponent();
+
+            m_resTipObj = transform.Find("ResTipPanel").gameObject;
+            m_resTipObj.SetActive(false);
+            m_resTip = Utility.RequireComponent<ResTipPanel>(m_resTipObj);
+            m_resTip.InitComponent();
+
+            m_endObj = transform.Find("ResEndTipPanel").gameObject;
+            m_endObj.SetActive(false);
+            m_endTip = Utility.RequireComponent<ResEndTipPanel>(m_endObj);
+            m_endTip.InitComponent();
+
+            m_tog = transform.Find("Right/Tag").GetComponent<TogGroup>();
+            m_tog.Init(ClickTog,-1);
+
+            m_researchCount = transform.Find("Left/MaxRes/Num").GetComponent<Text>();
+            m_researchEff = transform.Find("Left/Eff/Num").GetComponent<Text>();
+            m_manaCost = transform.Find("Left/Mana/Num").GetComponent<Text>();
+            m_charNum = transform.Find("Left/CharNum/Text").GetComponent<Text>();
+
+            Utility.AddButtonListener(transform.Find("Left/ViewBtn/Btn"),ClickViewBtn);
+            Utility.AddButtonListener(transform.Find("Left/CharNum/Image"),ClickChar);
+        }
+
+
+        private void OnEnable()
+        {
+            ControllerCenter.Instance.EquipResearchController.EquipResearchChange += EquipResearchChange;
+            ControllerCenter.Instance.EquipResearchController.CountDownAction += UpdateSlider;
+        }
+
+        private void OnDisable()
+        {
+            m_id = null;
+            m_currenType = EquipPanelType.None;
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.EquipList);
+            ControllerCenter.Instance.EquipResearchController.EquipResearchChange -= EquipResearchChange;
+            ControllerCenter.Instance.EquipResearchController.CountDownAction -= UpdateSlider;
+        }
+
+
+        public void Free()
+        {
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.EquipResearchItem);
+            if(m_equipList != null)
+                m_equipList.FreePool();
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.EquipList);
+        }
+
+        public void InitInfo()
+        {
+            Free();
+
+            if(!m_hasInit)
+            {
+                InitComponent();
+                m_hasInit = true;
+            }
+            UpdateCount();
+            UpdateManaCost();
+            UpdateEff();
+            UpdateCharNum();
+
+            GameObject obj = GameObjectPool.Instance.GetObjectByPrefabPath(StringDefine.ObjectPooItemKey.EquipList,
+                 StringDefine.ObjectPooItemKey.EquipList);
+            Utility.SetParent(obj,transform.Find("Right/EquipListParent"));
+            m_equipList = Utility.RequireComponent<EquipList>(obj);
+            m_equipList.InitComponent();
+
+            List<EquipResearchInfo> infoList = WorkshopSystem.Instance.GetResearchList();
+            for(int i = 0; i < infoList.Count; i++)
+            {
+                m_equipResearchList.AddResearch(infoList[i],ClickResItemCallBack);
+            }
+
+            m_tog.ClickTog(0);
+        }
+
+
+        private void ClickTog(int index)
+        {
+            if(m_currenType == (EquipPanelType)index)
+            {
+                return;
+            }
+            m_currenType = (EquipPanelType)index;
+            List<ItemAttribute> list = new List<ItemAttribute>();
+            switch(m_currenType)
+            {
+                case EquipPanelType.All:
+                    list = ItemSystem.Instance.GetAllEquip();
+                    break;
+                case EquipPanelType.Wuqi:
+                    list = ItemSystem.Instance.GetWuQiList();
+                    break;
+                case EquipPanelType.Hujia:
+                    list = ItemSystem.Instance.GetHuJiaList();
+                    break;
+                case EquipPanelType.SiPin:
+                    list = ItemSystem.Instance.GetSiPinList();
+                    break;
+            }
+            m_equipList.InitEquipList(list,ClickEquipCallBack);
+        }
+
+        private void ClickResItemCallBack(string id)
+        {
+            EquipResearchInfo info = WorkshopSystem.Instance.GetEquipResearchInfo(id);
+            if(info == null)
+            {
+                Debug.LogError("EquipResearchInfo is null");
+                return;
+            }
+
+            if(!string.IsNullOrEmpty(m_id))
+            {
+                m_equipResearchList.UpdateSelectShow(m_id,false);
+            }
+            m_id = id;
+            m_equipResearchList.UpdateSelectShow(m_id,true);
+
+            if(info.HaveUseTime >= info.NeedTime)
+            {
+                m_endObj.SetActive(true);
+                m_endTip.UpdateInfo(info);
+            }
+            else
+            {
+                m_resTipObj.SetActive(true);
+                m_resTip.UpdateInfo(info.EquipId,()=>m_resTipObj.SetActive(false),
+                    () => ControllerCenter.Instance.EquipResearchController.CancelResearch(info));
+            }
+        }
+
+
+        private void ClickEquipCallBack(ItemAttribute attr)
+        {
+            m_attr = attr;
+            m_resTipObj.SetActive(true);
+            m_resTip.UpdateInfo(attr.itemID,ResEquip);
+        }
+
+        private void ResEquip()
+        {
+            EquipAttribute equip = (EquipAttribute)m_attr;
+            if(equip.EquipState == EquipState.Enchanting ||
+                equip.EquipState == EquipState.Researching ||
+                equip.EquipState == EquipState.Lock)
+            {
+                return;
+            }
+
+            bool can = ControllerCenter.Instance.EquipResearchController.CanResearch(equip);
+            if(can)
+            {
+                if(equip.EquipState == EquipState.Wear)
+                {
+                    ConfirmPanelUtil.ShowConfirmPanel("次装备已经被装备，选择研究会给卸载，你确定吗？","确认研究",
+                      () =>
+                      {
+                          CharSystem.Instance.CharStripEquipment(m_attr.itemID,equip.charID);
+                          ControllerCenter.Instance.EquipResearchController.Research(equip);
+                      });
+                }
+                if(equip.EquipState == EquipState.Idle)
+                {
+                    ControllerCenter.Instance.EquipResearchController.Research(equip);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="status">状态（1：添加 2：时间到了  4 取消 5：手动移除 </param>
+        private void EquipResearchChange(EquipResearchInfo info,int status)
+        {
+            switch(status)
+            {
+                case 1:
+                    m_equipList.UpdateEuipStatus(info.EquipId,EquipState.Researching);
+                    m_equipResearchList.AddResearch(info,ClickResItemCallBack);
+                    break;
+                case 2:
+                    m_equipList.UpdateEuipStatus(info.EquipId,EquipState.Researching);
+                    m_equipResearchList.UpdateWhenResEnd(info.WorkId);
+                    break;
+                case 4:
+                case 5:
+                    m_equipList.FreeObj(info.EquipId);
+                    m_equipResearchList.RemoveResearch(info.WorkId);
+                    break;
+            }
+            UpdateCount();
+            UpdateManaCost();
+        }
+
+
+        private void UpdateSlider(string id,float allTime,int haveUseTime,float exp)
+        {
+            m_equipResearchList.UpdateSlider(id,allTime,haveUseTime,exp);
+        }
+
+
+        private void UpdateCount()
+        {
+            int max = ControllerCenter.Instance.EquipResearchController.GetMaxWorkNum();
+            int current = ControllerCenter.Instance.EquipResearchController.GetCorrentNum();
+            m_researchCount.text = string.Format("{0}/{1}",current,max);
+        }
+
+        private void UpdateManaCost()
+        {
+            float singleCost = ControllerCenter.Instance.EquipResearchController.GetManaCost();
+            int trainNum = ControllerCenter.Instance.EquipResearchController.GetCorrentNum(); ;
+            m_manaCost.text = ((int)singleCost * trainNum).ToString();
+        }
+
+
+        private void UpdateEff()
+        {
+            //1 + ERChar * hr_config. researchBonus 
+            HR_config hR_Config = HR_configConfig.GetHR_Config();
+            int num = Barrack.Data.BarrackSystem.Instance.GetNowUserTypeCharCount(CharStatus.EquipResearch);
+            float eff = 1 + num * hR_Config.researchBonus;
+            m_researchEff.text = (eff * 100) + "%";
+        }
+
+        private void UpdateCharNum()
+        {
+            int num = Barrack.Data.BarrackSystem.Instance.GetNowUserTypeCharCount(CharStatus.EquipResearch);
+            m_charNum.text = num.ToString();
+        }
+
+        private void ClickViewBtn()
+        {
+            m_viewObj.SetActive(true);
+            m_viewInfo.UpdateInfo();
+        }
+
+        private void ClickChar()
+        {
+            return;
+          //  GameEventrCenter.Instance.EmitClickBuilidFucEvent(false);
+           // GameEventrCenter.Instance.EmitUpdateRoomNameEvent(false,"");
+           // BuildUIController.Instance.ChangeBuild(BuildingTypeIndex.Barracks);
+        }
+
+    }
+}

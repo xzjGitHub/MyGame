@@ -1,0 +1,607 @@
+﻿using UnityEngine;
+using UnityEditor;
+using System.IO;
+using System.Collections.Generic;
+using System.Xml;
+
+public class BuildAssetbundle : EditorWindow
+{
+    //  private static BuildAssetbundle Window;
+    private int platformIndex = 0;
+    public static BuildAssetbundle window;
+    public static BuildTarget buildTarget = BuildTarget.StandaloneWindows;
+
+    //     private BuildTarget buildTarget;
+    private string[] PlatformType_ = new string[] { "Windows", "Android", "IOS" };
+    private int AndroidBundle_ = 1;
+    private int IOSBundle_ = 2;
+    private int WindowsBundle_ = 0;
+
+    [MenuItem("AssetBundle/打包改名")]
+    private static void ExportAssetBundles()
+    {
+        ChangeName();
+        if (!window)
+        {
+            window = CreateInstance<BuildAssetbundle>();
+            window.titleContent = new GUIContent("资源打包");
+            window.Show();
+        }
+    }
+
+
+    void OnGUI()
+    {
+        platformIndex = GUILayout.Toolbar(platformIndex, PlatformType_);
+
+
+        if (this.platformIndex == this.AndroidBundle_)
+        {
+            buildTarget = BuildTarget.Android;
+        }
+        else if (this.platformIndex == this.IOSBundle_)
+        {
+            buildTarget = BuildTarget.iOS;
+        }
+        else if (this.platformIndex == this.WindowsBundle_)
+        {
+            buildTarget = BuildTarget.StandaloneWindows;
+        }
+
+        if (GUILayout.Button( "1 CreateAssetBundle"))
+        {
+            CreateAssetBundle.Execute(buildTarget);
+            EditorUtility.DisplayDialog("", "Step 1 Completed", "OK");
+        }
+
+        if (GUILayout.Button( "2 Generate CRC32"))
+        {
+            CreateCrc32List.Execute(buildTarget);
+            EditorUtility.DisplayDialog("", "Step 2 Completed", "OK");
+        }
+
+        if (GUILayout.Button( "3 Compare CRC32"))
+        {
+            CampareCRC32ToGenerateVersionNum.Execute(buildTarget);
+            EditorUtility.DisplayDialog("", "Step 3 Completed", "OK");
+        }
+
+        //         if (GUI.Button(new Rect(10f, 220f, 200f, 50f), "(4)Build VersionNum.xml"))
+        //         {
+        //             CreateAssetBundleForXmlVersion.Execute(buildTarget);
+        //             EditorUtility.DisplayDialog("", "Step (4) Completed", "OK");
+        //         }
+    }
+
+    public static string GetPlatformPath(BuildTarget target)
+    {
+        string SavePath = "";
+        switch (target)
+        {
+            case BuildTarget.StandaloneWindows:
+                SavePath = "AssetBundle/res/"; //"AssetBundle/Windows32/";
+                break;
+            case BuildTarget.StandaloneWindows64:
+                SavePath = "AssetBundle/Windows64/";
+                break;
+            case BuildTarget.iOS:
+                SavePath = "AssetsAssetBundle/IOS/";
+                break;
+            case BuildTarget.StandaloneOSXUniversal:
+                SavePath = "AssetBundle/Mac/";
+                break;
+            case BuildTarget.Android:
+                SavePath = "AssetBundle/res/";
+                break;
+            default:
+                SavePath = "AssetBundle/";
+                break;
+        }
+
+        if (Directory.Exists(SavePath) == false)
+            Directory.CreateDirectory(SavePath);
+
+        return SavePath;
+    }
+
+    public static string GetPlatformName(BuildTarget target)
+    {
+        string platform = "res";// "Windows32";
+        switch (target)
+        {
+            case BuildTarget.StandaloneWindows:
+                platform = "res";
+                break;
+            case BuildTarget.StandaloneWindows64:
+                platform = "Windows64";
+                break;
+            case BuildTarget.iOS:
+                platform = "IOS";
+                break;
+            case BuildTarget.StandaloneOSXUniversal:
+                platform = "Mac";
+                break;
+            case BuildTarget.Android:
+                platform = "res";
+                break;
+            default:
+                break;
+        }
+        return platform;
+    }
+
+    private void BuildAssets()
+    {
+        string path = Application.dataPath.Replace("Assets", "") + "AssetBundle/res/";
+        //Debug.Log(path);
+        string dirName = System.IO.Path.GetDirectoryName(path);
+        if (!Directory.Exists(dirName))
+        {
+            System.IO.Directory.CreateDirectory(dirName);
+        }
+        BuildPipeline.BuildAssetBundles(path, BuildAssetBundleOptions.UncompressedAssetBundle, buildTarget);
+        AssetDatabase.Refresh();
+    }
+
+    //	[MenuItem ("AssetBundle/改变名字")]
+    static void ChangeName()
+    {
+        string path = Application.dataPath + "/res";       //"/Resources/res";
+        string[] pathTarget = Directory.GetDirectories(path);
+        foreach (string str in pathTarget)
+        {
+            string[] paths = Directory.GetDirectories(str);
+            foreach (string sss in paths)
+            {
+                string temp = sss.Replace('\\', '/');
+                string prefixName = temp.Replace(Application.dataPath + "/res/", "");
+                FindTarget(temp, prefixName);
+            }
+        }
+    }
+    static void FindTarget(string path, string prefixName)
+    {
+        string[] pathTarget = Directory.GetDirectories(path);
+        foreach (string temp4 in pathTarget)
+        {
+            //              if (temp4.Contains("\\"))
+            //              {
+            //                  prefixName = temp4.Replace("\\", "/");
+            FindTarget(temp4, prefixName);
+            //    }
+        }
+        string[] filesName = Directory.GetFiles(path);
+        foreach (string str2 in filesName)
+        {
+            if (!str2.EndsWith(".meta") && !str2.EndsWith(".cs") /*&& !str2.EndsWith(".mat")*/)         //.cs
+            {
+                //过滤扩展名
+                string temp = str2.Replace('\\', '/');
+                string realPath = "Assets" + temp.Replace(Application.dataPath, "");
+                //
+                string _temp = temp.Replace(Application.dataPath, "");
+                if (_temp.Contains("/res/"))
+                {
+                    _temp = _temp.Remove(0, 5);
+                }
+                int _index = _temp.LastIndexOf('.');
+                _temp = _temp.Remove(_index, _temp.Length- _index);
+
+                //
+                AssetImporter asset = AssetImporter.GetAtPath(realPath);
+                if (asset.assetBundleName == _temp)
+                {
+                    continue;
+                }
+                //   asset.assetBundleName = "";
+                //  prefixName = prefixName.Replace(Application.dataPath + "/res/", "");
+                //    Assets / res /
+                asset.assetBundleName = _temp /*prefixName*/;
+                asset.SaveAndReimport();
+            }
+        }
+    }
+}
+
+
+
+//将资源打包成assetbundle，并放到自定目录下
+public class CreateAssetBundle
+{
+    public static void Execute(BuildTarget target)
+    {
+        string path = Application.dataPath.Replace("Assets", "") + "AssetBundle/res/";
+        //   string path =/* Application.dataPath.Replace("Assets", "") + */BuildAssetbundle.GetPlatformPath(target);
+        //Debug.Log(path);
+        string dirName = System.IO.Path.GetDirectoryName(path);
+        if (!Directory.Exists(dirName))
+        {
+            System.IO.Directory.CreateDirectory(dirName);
+        }
+        BuildPipeline.BuildAssetBundles(path, BuildAssetBundleOptions.None, target);
+        AssetDatabase.Refresh();
+        // 当前选中的资源列表
+        //         foreach (Object o in Selection.GetFiltered(typeof(Object), SelectionMode.DeepAssets))
+        //         {
+        //             string path = AssetDatabase.GetAssetPath(o);
+        // 
+        //             // 过滤掉meta文件和文件夹
+        //             if (path.Contains(".meta") || path.Contains(".") == false)
+        //             { 
+        //                 continue; 
+        //             }
+        //            
+
+        // 过滤掉UIAtlas目录下的贴图和材质(UI/Common目录下的所有资源都是UIAtlas)
+        //             if (path.Contains("UI/Common"))
+        //             {
+        //                 if ((o is Texture) || (o is Material))
+        //                     continue;
+        //             }
+
+        //             string dirName = System.IO.Path.GetDirectoryName(path);
+        // 
+        // 
+        //             AssetBundleBuild[] buildMap = new AssetBundleBuild[1];
+        //             buildMap[0].assetBundleName = Path.GetFileNameWithoutExtension(path);
+        // 
+        //             string[] enemyAssets = new string[1];
+        //             enemyAssets[0] = path;
+        //             buildMap[0].assetNames = enemyAssets;
+
+        //             string a = "Assets/res/AssetBundle" + dirName.Replace("Assets/res","");
+        //             if (!Directory.Exists(a))
+        //             {
+        //                 System.IO.Directory.CreateDirectory(a);
+        //             }
+
+        // BuildPipeline.BuildAssetBundles(a, buildMap, BuildAssetBundleOptions.None, target);
+
+        //      BuildPipeline.BuildAssetBundles(path, BuildAssetBundleOptions.None, target);
+        //   AssetDatabase.Refresh();
+        //     }
+        //    BuildPipeline.BuildAssetBundles(path, BuildAssetBundleOptions.None, target);
+
+        //    string path = Application.dataPath.Replace("Assets", "") + BuildAssetbundle.GetPlatformPath(target);
+        //"AssetBundle/res/";
+        //Debug.Log(path);
+
+    }
+}
+
+
+public class CreateCrc32List
+{
+
+    public static void Execute(UnityEditor.BuildTarget target)
+    {
+        string platform = BuildAssetbundle.GetPlatformName(target);
+        Execute(platform);
+        AssetDatabase.Refresh();
+    }
+    public static void Execute(string platform)
+    {
+        Dictionary<string, string> DicFileCRC32 = new Dictionary<string, string>();
+
+        string dir = System.IO.Path.Combine(Application.dataPath.Replace("Assets", ""), "AssetBundle/" + platform);
+
+        foreach (var item in FindTarget(dir))
+        {
+            DicFileCRC32.Add(item.Key, item.Value);
+        }
+
+        string savePath = System.IO.Path.Combine(Application.dataPath.Replace("Assets", ""), "AssetBundle/") + platform + "/VersionNum";
+        if (Directory.Exists(savePath) == false)
+        {
+            Directory.CreateDirectory(savePath);
+        }
+        // 删除前一版的old数据
+        if (File.Exists(savePath + "/VersionCRC32-old.xml"))
+        {
+            System.IO.File.Delete(savePath + "/VersionCRC32-old.xml");
+        }
+
+        // 如果之前的版本存在，则将其名字改为VersionCRC32-old.xml
+        if (File.Exists(savePath + "/VersionCRC32.xml"))
+        {
+            System.IO.File.Move(savePath + "/VersionCRC32.xml", savePath + "/VersionCRC32-old.xml");
+        }
+
+        XmlDocument XmlDoc = new XmlDocument();
+        XmlElement XmlRoot = XmlDoc.CreateElement("Files");
+        XmlDoc.AppendChild(XmlRoot);
+        foreach (KeyValuePair<string, string> pair in DicFileCRC32)
+        {
+            XmlElement xmlElem = XmlDoc.CreateElement("File");
+            XmlRoot.AppendChild(xmlElem);
+
+            xmlElem.SetAttribute("FileName", pair.Key);
+            xmlElem.SetAttribute("CRC32", pair.Value);
+        }
+
+        // 读取旧版本的CRC32
+        Dictionary<string, string> dicOldCRC32 = ReadCRC32File(savePath + "/VersionCRC32-old.xml");
+        // VersionCRC32-old中有，而VersionCRC32中没有的信息，手动添加到VersionCRC32
+        foreach (KeyValuePair<string, string> pair in dicOldCRC32)
+        {
+            if (DicFileCRC32.ContainsKey(pair.Key) == false)
+                DicFileCRC32.Add(pair.Key, pair.Value);
+        }
+
+        XmlDoc.Save(savePath + "/VersionCRC32.xml");
+        XmlDoc = null;
+    }
+
+
+
+    static Dictionary<string, string> FindTarget(string path)
+    {
+        Dictionary<string, string> DicFileCRC32 = new Dictionary<string, string>();
+
+        string[] pathTarget = Directory.GetDirectories(path);
+        foreach (var item in pathTarget)
+        {
+            foreach (var x in FindTarget(item))
+            {
+                DicFileCRC32.Add(x.Key, x.Value);
+            }
+        }
+
+        string[] filesName = Directory.GetFiles(path);
+
+        foreach (var filePath in filesName)
+        {
+            if (filePath.Contains(".meta") || filePath.Contains("VersionCRC32") || filePath.Contains(".xml") || filePath.Contains(".manifest"))
+            {
+                continue;
+            }
+
+            int _index = filePath.IndexOf("\\");
+
+            string key = filePath.Substring(_index + 1, filePath.Length - _index - 1);
+
+            key = "res/" + key.Replace("\\", "/");
+
+            if (DicFileCRC32.ContainsKey(key) == false)
+            {
+                DicFileCRC32.Add(key, CRC32.GetCRC32S(filePath));
+            }
+        }
+
+        
+
+
+        return DicFileCRC32;
+
+    }
+
+
+    static void FindTarget(string path, string prefixName)
+    {
+        string[] pathTarget = Directory.GetDirectories(path);
+        foreach (string temp4 in pathTarget)
+        {
+            FindTarget(temp4, prefixName);
+        }
+        string[] filesName = Directory.GetFiles(path);
+        foreach (string str2 in filesName)
+        {
+            if (!str2.EndsWith(".meta") && !str2.EndsWith(".cs") /*&& !str2.EndsWith(".mat")*/)         //.cs
+            {
+                //过滤扩展名
+                string temp = str2.Replace('\\', '/');
+                string realPath = "Assets" + temp.Replace(Application.dataPath, "");
+                //
+                string _temp = temp.Replace(Application.dataPath, "");
+                if (_temp.Contains("/res/"))
+                {
+                    _temp = _temp.Remove(0, 5);
+                }
+                int _index = _temp.LastIndexOf('.');
+                _temp = _temp.Remove(_index, _temp.Length - _index);
+                //
+                AssetImporter asset = AssetImporter.GetAtPath(realPath);
+                if (asset.assetBundleName == _temp)
+                {
+                    continue;
+                }
+
+                asset.assetBundleName = _temp;
+                asset.SaveAndReimport();
+            }
+        }
+    }
+
+
+
+
+    static Dictionary<string, string> ReadCRC32File(string fileName)
+    {
+        Dictionary<string, string> DicCRC32 = new Dictionary<string, string>();
+
+        // 如果文件不存在，则直接返回
+        if (System.IO.File.Exists(fileName) == false)
+            return DicCRC32;
+
+        XmlDocument XmlDoc = new XmlDocument();
+        XmlDoc.Load(fileName);
+        XmlElement XmlRoot = XmlDoc.DocumentElement;
+
+        foreach (XmlNode node in XmlRoot.ChildNodes)
+        {
+            if ((node is XmlElement) == false)
+                continue;
+
+            string file = (node as XmlElement).GetAttribute("FileName");
+            string CRC32 = (node as XmlElement).GetAttribute("CRC32");
+
+            if (DicCRC32.ContainsKey(file) == false)
+            {
+                DicCRC32.Add(file, CRC32);
+            }
+        }
+
+        XmlRoot = null;
+        XmlDoc = null;
+
+        return DicCRC32;
+    }
+}
+
+
+//比较新旧CRC32码，生成资源变更列表
+public class CampareCRC32ToGenerateVersionNum
+{
+    public static void Execute(UnityEditor.BuildTarget target)
+    {
+        string platform = BuildAssetbundle.GetPlatformName(target);
+        Execute(platform);
+        AssetDatabase.Refresh();
+    }
+
+    // 对比对应版本目录下的VersionCRC32和VersionCRC32-old，得到最新的版本号文件VersionNum.xml
+    public static void Execute(string platform)
+    {
+        // 读取新旧CRC32列表
+        string newVersionCRC32 = System.IO.Path.Combine(Application.dataPath.Replace("Assets", ""), "AssetBundle/" + platform + "/VersionNum/VersionCRC32.xml");
+        string oldVersionCRC32 = System.IO.Path.Combine(Application.dataPath.Replace("Assets", ""), "AssetBundle/" + platform + "/VersionNum/VersionCRC32-old.xml");
+
+        Dictionary<string, string> dicNewCRC32Info = ReadCRC32File(newVersionCRC32);
+        Dictionary<string, string> dicOldCRC32Info = ReadCRC32File(oldVersionCRC32);
+
+        // 读取版本号记录文件VersinNum.xml
+        string oldVersionNum = System.IO.Path.Combine(Application.dataPath.Replace("Assets", ""), "AssetBundle/" + platform + "/VersionNum/VersionNum.xml");
+        Dictionary<string, int> dicVersionNumInfo = ReadVersionNumFile(oldVersionNum);
+
+        // 对比新旧CRC32信息，并更新版本号，即对比dicNewCRC32Info&&dicOldCRC32Info来更新dicVersionNumInfo
+        foreach (KeyValuePair<string, string> newPair in dicNewCRC32Info)
+        {
+            // 旧版本中有
+            if (dicOldCRC32Info.ContainsKey(newPair.Key))
+            {
+                // CRC32一样，则不变
+                // CRC32不一样，则+1
+                // 容错：如果新旧CRC32都有，但是还没有版本号记录的，则直接添加新纪录，并且将版本号设为1
+                if (dicVersionNumInfo.ContainsKey(newPair.Key) == false)
+                {
+                    dicVersionNumInfo.Add(newPair.Key, 1);
+                }
+                else if (newPair.Value != dicOldCRC32Info[newPair.Key])
+                {
+                    int num = dicVersionNumInfo[newPair.Key];
+                    dicVersionNumInfo[newPair.Key] = num + 1;
+                }
+            }
+            else // 旧版本中没有，则添加新纪录，并=1
+            {
+                dicVersionNumInfo.Add(newPair.Key, 1);
+            }
+        }
+        // 不可能出现旧版本中有，而新版本中没有的情况，原因见生成CRC32List的处理逻辑
+
+        // 存储最新的VersionNum.xml
+        SaveVersionNumFile(dicVersionNumInfo, oldVersionNum);
+    }
+
+    static Dictionary<string, string> ReadCRC32File(string fileName)
+    {
+        Dictionary<string, string> DicCRC32 = new Dictionary<string, string>();
+
+        // 如果文件不存在，则直接返回
+        if (System.IO.File.Exists(fileName) == false)
+            return DicCRC32;
+
+        XmlDocument XmlDoc = new XmlDocument();
+        XmlDoc.Load(fileName);
+        XmlElement XmlRoot = XmlDoc.DocumentElement;
+
+        foreach (XmlNode node in XmlRoot.ChildNodes)
+        {
+            if ((node is XmlElement) == false)
+                continue;
+
+            string file = (node as XmlElement).GetAttribute("FileName");
+            string CRC32 = (node as XmlElement).GetAttribute("CRC32");
+
+            if (DicCRC32.ContainsKey(file) == false)
+            {
+                DicCRC32.Add(file, CRC32);
+            }
+        }
+
+        XmlRoot = null;
+        XmlDoc = null;
+
+        return DicCRC32;
+    }
+
+    static Dictionary<string, int> ReadVersionNumFile(string fileName)
+    {
+        Dictionary<string, int> DicVersionNum = new Dictionary<string, int>();
+
+        // 如果文件不存在，则直接返回
+        if (System.IO.File.Exists(fileName) == false)
+            return DicVersionNum;
+
+        XmlDocument XmlDoc = new XmlDocument();
+        XmlDoc.Load(fileName);
+        XmlElement XmlRoot = XmlDoc.DocumentElement;
+
+        foreach (XmlNode node in XmlRoot.ChildNodes)
+        {
+            if ((node is XmlElement) == false)
+                continue;
+
+            string file = (node as XmlElement).GetAttribute("FileName");
+            int num = XmlConvert.ToInt32((node as XmlElement).GetAttribute("Num"));
+
+            if (DicVersionNum.ContainsKey(file) == false)
+            {
+                DicVersionNum.Add(file, num);
+            }
+        }
+
+        XmlRoot = null;
+        XmlDoc = null;
+
+        return DicVersionNum;
+    }
+
+    static void SaveVersionNumFile(Dictionary<string, int> data, string savePath)
+    {
+        XmlDocument XmlDoc = new XmlDocument();
+        XmlElement XmlRoot = XmlDoc.CreateElement("VersionNum");
+        XmlDoc.AppendChild(XmlRoot);
+
+        foreach (KeyValuePair<string, int> pair in data)
+        {
+            XmlElement xmlElem = XmlDoc.CreateElement("File");
+            XmlRoot.AppendChild(xmlElem);
+            xmlElem.SetAttribute("FileName", pair.Key);
+            xmlElem.SetAttribute("Num", XmlConvert.ToString(pair.Value));
+        }
+
+        XmlDoc.Save(savePath);
+        XmlRoot = null;
+        XmlDoc = null;
+    }
+}
+
+//将变更列表文件也打包成assetbundle
+public class CreateAssetBundleForXmlVersion
+{
+    public static void Execute(UnityEditor.BuildTarget target)
+    {
+        string SavePath = BuildAssetbundle.GetPlatformPath(target);
+        Object obj = AssetDatabase.LoadAssetAtPath(SavePath + "VersionNum/VersionNum.xml", typeof(Object));
+        BuildPipeline.BuildAssetBundle(obj, null, SavePath + "VersionNum/VersionNum.assetbundle", BuildAssetBundleOptions.CollectDependencies | BuildAssetBundleOptions.CompleteAssets | BuildAssetBundleOptions.DeterministicAssetBundle, target);
+
+        AssetDatabase.Refresh();
+    }
+
+    static string ConvertToAssetBundleName(string ResName)
+    {
+        return ResName.Replace('/', '.');
+    }
+
+}

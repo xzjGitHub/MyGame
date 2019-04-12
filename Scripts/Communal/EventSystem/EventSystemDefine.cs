@@ -1,0 +1,387 @@
+﻿namespace GameEventDispose
+{
+
+    /// <summary>
+    /// 事件Id
+    /// </summary>
+    public enum EventId
+    {
+        None = 0,
+        /// <summary>
+        /// 系统事件
+        /// </summary>
+        SystemEvent = 1,
+        /// <summary>
+        /// 战斗事件
+        /// </summary>
+        CombatEvent = 2,
+        /// <summary>
+        /// 探索事件
+        /// </summary>
+        ExploreEvent = 3,
+        /// <summary>
+        /// 剧本时间
+        /// </summary>
+        ScriptTimeEvent = 4,
+        /// <summary>
+        /// 入侵事件
+        /// </summary>
+        InvasionEvent = 5,
+        /// <summary>
+        /// 战斗特效
+        /// </summary>
+        CombatEffect = 6,
+        /// <summary>
+        /// 要塞显示
+        /// </summary>
+        FortShow = 7,
+        /// <summary>
+        /// 角色事件
+        /// </summary>
+        CharEvent = 8,
+        /// <summary>
+        /// 悬赏事件
+        /// </summary>
+        BountyEvent=9,
+    }
+
+    /// <summary>
+    /// 战斗角色动作事件
+    /// </summary>
+    public enum CombatCharActionEvent
+    {
+        Skill,
+        EffectObj1,
+        EffectObj2,
+        EffectObj3,
+        EffectObj4,
+        Hit,
+        End,
+        Event1,
+        Event2,
+        Event3,
+    }
+
+
+    /// <summary>
+    /// 游戏系统事件类型
+    /// </summary>
+    public enum GameSystemEventType
+    {
+        /// <summary>
+        /// 金币
+        /// </summary>
+        Gold = 0,
+        /// <summary>
+        /// 魔力
+        /// </summary>
+        Mana = 2,
+        /// <summary>
+        /// 代币
+        /// </summary>
+        Token = 3,
+        /// <summary>
+        /// 游戏结束
+        /// </summary>
+        GameOver = 4,
+        /// <summary>
+        /// 魔晶
+        /// </summary>
+        MoJing=5,
+    }
+
+    /// <summary>
+    /// 战斗事件类型
+    /// </summary>
+    public enum CombatEventType
+    {
+        ImpulseEffect,
+        ImpulseEffectOk,
+        ExecStateOk,
+        CastSkill,
+        CastSkillOk,
+        CommomSkillHit,
+        SkillHit,
+        CommomSkill,
+        CommomSkillOk,
+        SkillHitOk,
+        StateEffectOk,
+        TargetOk,
+        StartCombat,
+        EndCombat,
+        ReadyCombat,
+        ReadyCombatOk,
+        Celebrate,
+        Rewards,
+        CombatResult,
+        CombatWin,
+        CombatFail,
+    }
+    /// <summary>
+    /// 战斗播放事件类型
+    /// </summary>
+    public enum CombatPlayEventType
+    {
+        PlayNewResult,
+        PlayCharAction,
+        PlaySkillEffect,
+        PlayCommomSkill,
+        PlayCommomHit,
+        PlaySkillHit,
+        PlayStateEffect,
+        PlayResetCharPos,
+        PlayUpdateRound,
+        PlayExecState,
+        PlaySCheckkillHitOk,
+        PlayCelebrate,
+        PlayRewards,
+        PlayAction,
+        CombatContent,
+    }
+    /// <summary>
+    /// 角色阶段事件类型
+    /// </summary>
+    public enum CharPhaseEventType
+    {
+        /// <summary>
+        /// 开始
+        /// </summary>
+        Start = 1,
+        /// <summary>
+        /// 过程1
+        /// </summary>
+        Process1 = 2,
+        /// <summary>
+        /// 过程2
+        /// </summary>
+        Process2 = 3,
+        /// <summary>
+        /// 结束
+        /// </summary>
+        END = 4,
+    }
+    /// <summary>
+    /// 探索事件类型
+    /// </summary>
+    public enum ExploreEventType
+    {
+        /// <summary>
+        /// 加载
+        /// </summary>
+        Loading = 1,
+        /// <summary>
+        /// 路点开始准备
+        /// </summary>
+        WPStartReady = 2,
+        /// <summary>
+        /// 路点结束
+        /// </summary>
+        WPEnd = 3,
+        /// <summary>
+        /// 探索完成
+        /// </summary>
+        ExploreFinish = 7,
+        /// <summary>
+        /// 自己移动
+        /// </summary>
+        OneselfMove = 8,
+        /// <summary>
+        /// 自己移动完成
+        /// </summary>
+        OneselfMoveFinish = 9,
+        /// <summary>
+        /// 战斗结束
+        /// </summary>
+        CombatEnd = 10,
+        /// <summary>
+        /// 路点开始
+        /// </summary>
+        WPStart = 11,
+        /// <summary>
+        /// 访问事件
+        /// </summary>
+        VisitEvent = 12,
+        /// <summary>
+        /// 访问事件结束
+        /// </summary>
+        VisitEventEnd = 13,
+        /// <summary>
+        /// 事件显示
+        /// </summary>
+        EventShow = 14,
+        /// <summary>
+        /// 事件离开
+        /// </summary>
+        EventQuit = 15,
+        /// <summary>
+        /// 路点选择
+        /// </summary>
+        WPSelect = 16,
+        /// <summary>
+        /// 推出探索
+        /// </summary>
+        QuitExplore = 17,
+        /// <summary>
+        /// 场景结束
+        /// </summary>
+        SceneEnd = 18,
+        /// <summary>
+        /// 场景开始准备
+        /// </summary>
+        SceneStartReady = 19,
+        /// <summary>
+        /// 屏幕开始移动
+        /// </summary>
+        SceneStartMove = 20,
+        /// <summary>
+        /// 移动场景中间
+        /// </summary>
+        MoveSceneMim = 21,
+        /// <summary>
+        /// 移动场景中间开始
+        /// </summary>
+        MoveSceneMimStart = 22,
+        /// <summary>
+        ///  屏幕开始结束
+        /// </summary>
+        SceneMoveEnd = 23,
+        /// <summary>
+        /// 访问移动
+        /// </summary>
+        VisiteEventMove = 24,
+        /// <summary>
+        /// 访问移动结束
+        /// </summary>
+        VisiteEventMoveEnd = 25,
+        /// <summary>
+        /// 重置场景
+        /// </summary>
+        ResetScene = 26,
+        /// <summary>
+        /// 重置场景结束
+        /// </summary>
+        ResetSceneEnd = 27,
+        /// <summary>
+        /// 事件访问失败
+        /// </summary>
+        EventVisitFail = 28,
+    }
+
+    /// <summary>
+    /// 战斗播放事件类型
+    /// </summary>
+    public enum PlayCombatEffect
+    {
+        ImpulseEffect,
+        Targetset,
+        SkillEffect,
+        EndEvent,
+        ResultEnd,
+        CharDie,
+        ImmediateSkillEffect,
+    }
+
+    /// <summary>
+    /// 剧本时间更新类型
+    /// </summary>
+    public enum ScriptTimeUpdateType
+    {
+        /// <summary>
+        /// 秒
+        /// </summary>
+        Second = 0,
+        /// <summary>
+        /// 天
+        /// </summary>
+        Day = 1,
+        /// <summary>
+        /// 月
+        /// </summary>
+        Month = 2,
+        /// <summary>
+        /// 年
+        /// </summary>
+        Year = 3,
+        /// <summary>
+        /// 周
+        /// </summary>
+        Week = 4,
+    }
+
+    /// <summary>
+    /// 周期入侵阶段
+    /// </summary>
+    public enum CycleInvasionPhase
+    {
+        /// <summary>
+        /// 空闲
+        /// </summary>
+        Idle = 0,
+        /// <summary>
+        /// 前置
+        /// </summary>
+        Preposition = 1,
+        /// <summary>
+        /// 警告
+        /// </summary>
+        Warning = 2,
+        /// <summary>
+        /// 围攻
+        /// </summary>
+        Siege = 3,
+        /// <summary>
+        /// 围攻结束
+        /// </summary>
+        SiegeEnd = 4,
+        /// <summary>
+        /// 入侵结束
+        /// </summary>
+        InvasionEnd = 5,
+        /// <summary>
+        /// 更新中
+        /// </summary>
+        Updateing = 6,
+        /// <summary>
+        /// 开始之前
+        /// </summary>
+        BeforeStarting = 7,
+    }
+
+    /// <summary>
+    /// 要塞显示
+    /// </summary>
+    public enum FortShowEvent
+    {
+        /// <summary>
+        /// 刷新要塞
+        /// </summary>
+        RefreshZone = 1,
+        /// <summary>
+        /// 刷新地图
+        /// </summary>
+        RefreshMap = 2,
+    }
+
+    public enum CombatContent
+    {
+        UseSkill,
+        HitResult,
+    }
+
+    public enum SkillTargetType
+    {
+        Other,
+        Oneself,
+        Others,
+    }
+
+    public enum BountyEventType
+    {
+        TargetUpdate,
+        AcceptBounty,
+        RandomUpdate,
+        FinishBounty,
+        MainUpdate,
+        RenownAward,
+    }
+}

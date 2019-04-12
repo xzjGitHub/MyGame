@@ -1,0 +1,277 @@
+﻿using EventCenter;
+using Spine.Unity;
+using System;
+using UnityEngine;
+
+
+public partial class HallPanel : UIPanelBehaviour, IBuild
+{
+    private GameObject m_btn;
+    private GameObject m_task;
+
+    private SkeletonGraphic m_skeletonGraphic;
+    private UINPC m_uiNpc;
+    private Animator m_animator;
+
+    public float WaitShowEffTime = 1;
+
+    protected override void OnAwake()
+    {
+        Init();
+        EventManager.Instance.TriggerEvent(EventSystemType.UI, EventTypeNameDefine.UpdateTitleName, false, "");
+    }
+
+
+    private void Init()
+    {
+        InitComponent();
+        m_skeletonGraphic = BuilidUtil.Instance.InitEff(
+          BuildingTypeIndex.TownHall, m_uiNpc, m_btn, transform.Find("EffPos/Hall").gameObject);
+        InitBtnEvent();
+        //打开随机悬赏
+        OnOpenRandomBounty();
+    }
+
+    protected override void OnHide()
+    {
+        // m_skeletonGraphic.AnimationState.Complete -= Close;
+        // BuilidUtil.Instance.RemoveEvent(m_skeletonGraphic);
+        //UIEffectFactory.Instance.FreeEffect(StringDefine.UIEffectNameDefine.HallEff);
+    }
+
+    private void InitComponent()
+    {
+        m_btn = transform.Find("RoomInfo/Btn").gameObject;
+        m_btn.SetActive(false);
+        m_task = transform.Find("Parent").gameObject;
+        m_uiNpc = transform.Find("RoomInfo/Npc").GetComponent<UINPC>();
+        //m_uiNpc.gameObject.SetActive(true);
+        m_uiNpc.Init(() => m_btn.SetActive(true));
+
+        m_animator = gameObject.GetComponent<Animator>();
+        Transform otherPopup = transform.Find("OtherPop");
+
+        //添加脚本
+        //  m_task.SetActive(false);
+        if (renownReward == null)
+        {
+            renownReward = otherPopup.Find("Reward").gameObject.AddComponent<UITownHallRenownReward>();
+            renownReward.OnBack = OnCallRewardBack;
+        }
+        if (hallRenown == null)
+        {
+            hallRenown = otherPopup.Find("Renown").gameObject.AddComponent<UITownHallRenown>();
+            hallRenown.OnRenownAward = OnCallRenownReward;
+        }
+        if (hallRandomBounty == null)
+        {
+            hallRandomBounty = otherPopup.Find("RandomBounty").gameObject.AddComponent<UITownHallRandomBounty>();
+            hallRandomBounty.OnClickCall = OnCallBackClick_RandomBounty;
+        }
+
+        if (mainBounty == null)
+        {
+            mainBounty = m_task.transform.Find("MainBounty").gameObject.AddComponent<UITownHallMainBounty>();
+        }
+    }
+
+    private void InitBtnEvent()
+    {
+        Utility.AddButtonListener(transform.Find("RoomInfo/Btn/MainTask").transform, OnClickMainBounty);
+        Utility.AddButtonListener(transform.Find("RoomInfo/Btn/SecondTask").transform, OnClickRenown);
+
+    }
+
+    public void ClickBack()
+    {
+
+        if (OnBackCall != null)
+        {
+            OnBackCall();
+            OnBackCall = null;
+            if (isMianBounty)
+            {
+                isMianBounty = false;
+                EventManager.Instance.TriggerEvent(EventSystemType.UI, EventTypeNameDefine.MainPanelAnim, false);
+                Utility.PlayAnim(m_animator, BuildUIController.CloseAnimName);
+                m_uiNpc.PlayIdle();
+                return;
+            }
+
+            if (isOtherUI)
+            {
+                isOtherUI = false;
+                return;
+            }
+        }
+        //if (m_current != null && m_current.activeSelf)
+        //{
+        //    m_current.SetActive(false);
+        //    m_btn.SetActive(true);
+        //    GameEventrCenter.Instance.EmitClickBuilidFucEvent(false);
+        //    GameEventrCenter.Instance.EmitUpdateRoomNameEvent(false, "");
+        //}
+        //else
+        //{
+        //    BuildUIController.Instance.BackToStart(
+        //  () => UIPanelManager.Instance.Hide<HallPanel>());
+        //}
+        BuildUIController.Instance.BackToStart(() => UIPanelManager.Instance.Hide<HallPanel>());
+    }
+
+    #region 打开子界面
+
+    /// <summary>
+    /// 点击主线任务
+    /// </summary>
+    private void OnClickMainBounty()
+    {
+        isMianBounty = true;
+        Utility.PlayAnim(m_animator, BuildUIController.ShowAnimName);
+        EventManager.Instance.TriggerEvent(EventSystemType.UI,
+         EventTypeNameDefine.MainPanelAnim, true);
+        EventManager.Instance.TriggerEvent(EventSystemType.UI, EventTypeNameDefine.UpdateTitleName, true, "主线任务");
+
+        //GameEventrCenter.Instance.EmitClickBuilidFucEvent(true);
+        //GameEventrCenter.Instance.EmitUpdateRoomNameEvent(true, "主线任务");
+        //
+        mainBounty.OpenUI();
+        OnBackCall = OnCallMainBountyBack;
+        m_uiNpc.gameObject.SetActive(false);
+        hallRandomBounty.CloseUI();
+    }
+    /// <summary>
+    /// 点击公共关系
+    /// </summary>
+    private void OnClickRenown()
+    {
+        isOtherUI = true;
+        hallRenown.OpenUI();
+        OnBackCall = OnCallRenownBack;
+        hallRandomBounty.CloseUI();
+    }
+
+    /// <summary>
+    /// 点击随机悬赏
+    /// </summary>
+    private void OnOpenRandomBounty()
+    {
+        isOtherUI = true;
+        hallRandomBounty.OpenUI();
+    }
+
+
+    /// <summary>
+    /// 领取奖励
+    /// </summary>
+    /// <param name="param"></param>
+    private void OnCallReward(object param)
+    {
+        hallRenown.OpenUI(param);
+    }
+
+    /// <summary>
+    /// 领取声望奖励回调
+    /// </summary>
+    /// <param name="msg"></param>
+    private void OnCallRenownReward(RenownBoxReward msg)
+    {
+        isOtherUI = true;
+        renownReward.OpenUI(msg);
+        OnBackCall = OnCallRewardBack;
+    }
+
+    #endregion
+
+    #region 回调
+
+    /// <summary>
+    /// 奖励返回回调
+    /// </summary>
+    private void OnCallRewardBack()
+    {
+        isOtherUI = true;
+        renownReward.gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// 初始化返回回调——随机悬赏
+    /// </summary>
+    private void OnCallBackClick_RandomBounty()
+    {
+        isOtherUI = true;
+        OnBackCall = OnCallRandomBountyBack;
+    }
+
+    /// <summary>
+    /// 随机悬赏返回回调
+    /// </summary>
+    private void OnCallRandomBountyBack()
+    {
+        hallRandomBounty.ClosePopoupShow();
+    }
+
+
+    /// <summary>
+    /// 主线悬赏返回回调
+    /// </summary>
+    private void OnCallMainBountyBack()
+    {
+        OnOpenRandomBounty();
+        mainBounty.gameObject.SetActive(false);
+        m_btn.SetActive(true);
+        m_uiNpc.gameObject.SetActive(true);
+        EventManager.Instance.TriggerEvent(EventSystemType.UI,
+        EventTypeNameDefine.MainPanelAnim, false);
+        EventManager.Instance.TriggerEvent(EventSystemType.UI, EventTypeNameDefine.UpdateTitleName, false, "");
+
+        // GameEventrCenter.Instance.EmitClickBuilidFucEvent(false);
+        //GameEventrCenter.Instance.EmitUpdateRoomNameEvent(false, "");
+    }
+    /// <summary>
+    /// 公共关系返回回调
+    /// </summary>
+    private void OnCallRenownBack()
+    {
+        OnOpenRandomBounty();
+        hallRenown.gameObject.SetActive(false);
+    }
+
+
+    #endregion
+
+
+    /*
+     * open 
+            GameEventrCenter.Instance.EmitClickBuilidFucEvent(true);
+            GameEventrCenter.Instance.EmitUpdateRoomNameEvent(true,s);
+
+            close
+                  m_btn.SetActive(true);
+                GameEventrCenter.Instance.EmitClickBuilidFucEvent(false);
+                GameEventrCenter.Instance.EmitUpdateRoomNameEvent(false,"");
+
+                    if(m_current != null && m_current.activeSelf)
+            {
+                m_current.SetActive(false);
+                m_btn.SetActive(true);
+                GameEventrCenter.Instance.EmitClickBuilidFucEvent(false);
+                GameEventrCenter.Instance.EmitUpdateRoomNameEvent(false,"");
+            }
+            else
+            {
+                BuildUIController.Instance.BackToStart(
+              () => UIPanelManager.Instance.Hide<HallPanel>());
+            }
+     */
+    //
+    //
+    private Action OnBackCall;
+    private bool isOtherUI;
+    private bool isMianBounty;
+    //
+    private UITownHallRenownReward renownReward;
+    private UITownHallRenown hallRenown;
+    private UITownHallRandomBounty hallRandomBounty;
+    private UITownHallMainBounty mainBounty;
+}

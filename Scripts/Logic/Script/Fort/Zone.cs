@@ -1,0 +1,350 @@
+﻿using ProtoBuf;
+using System.Collections.Generic;
+using System.Linq;
+using GameEventDispose;
+
+/// <summary>
+/// 要塞
+/// </summary>
+public class Zone
+{
+    public int ZoneId { get { return zoneID; } }
+
+    public Zone_template ZoneTemplate { get { return zone_Template; } }
+
+    public Fort_template FortTemplate { get { return fortTemplate; } }
+
+    public Dictionary<int, ExploreMap> ExploreMaps { get { return exploreMaps; } }
+
+    /// <summary>
+    /// 要塞状态1=新 、2=旧
+    /// </summary>
+    public ZoneState ZoneState
+    {
+        get { return zoneState; }
+    }
+
+    public FortType FortType
+    {
+        get { return fortType; }
+    }
+
+    public int FortId
+    {
+        get { return fortID; }
+    }
+
+    public List<int> CDEvents { get { return comDisEvents; } }
+
+
+    /// <summary>
+    /// 新建要塞
+    /// </summary>
+    public Zone(int zoneID, FortType fortType, int nowTime = 0, bool isNew = true)
+    {
+        this.zoneID = zoneID;
+        this.fortType = fortType;
+        //
+        zone_Template = Zone_templateConfig.GetZoneTemplate(zoneID);
+        if (zone_Template == null) return;
+        zoneState = isNew ? ZoneState.New : ZoneState.Old;
+        //
+        if (isNew && (fortType == FortType.Fortress || fortType == FortType.Base))
+        {
+            firstRefreshTime = nowTime;
+            RefreshZone(nowTime);
+        }
+    }
+    /// <summary>
+    /// 新建要塞
+    /// </summary>
+    public Zone(ZoneData zoneData)
+    {
+        firstRefreshTime = zoneData.firstRefreshTime;
+        fortID = zoneData.fortID;
+        zoneID = zoneData.zoneID;
+        fortType = zoneData.fortType;
+        zoneState = zoneData.ZoneState;
+        //
+        fortTemplate = Fort_templateConfig.GetFort_template(fortID);
+        zone_Template = Zone_templateConfig.GetZoneTemplate(zoneID);
+        //
+        foreach (var item in zoneData.exploreMaps)
+        {
+            exploreMaps.Add(item.Key, new ExploreMap(item.Value, this));
+        }
+    }
+
+    public ExploreMap GetMap(int mapID)
+    {
+        foreach (var item in exploreMaps)
+        {
+            if (item.Value.MapId == mapID)
+            {
+                return item.Value;
+            }
+        }
+            return null;
+    }
+
+    /// <summary>
+    /// 刷新区域
+    /// </summary>
+    public void RefreshZone(float time)
+    {
+        //todo 修改自动刷新地图
+        //if (((int)time - firstRefreshTime) % zone_Template.resetCycle != 0) return;
+        //LogHelperLSK.Log("刷新" + zone_Template.zoneID);
+        //
+        List<int> maps = new List<int>();
+        switch (zoneState)
+        {
+            case ZoneState.Old:
+                SelectMapID(zone_Template.rndMapSet[0], zone_Template.selectChance[0], maps);
+                break;
+            case ZoneState.New:
+                int _index = 0;
+                foreach (var item in zone_Template.rndMapSet)
+                {
+                    SelectMapID(item, zone_Template.selectChance[_index], maps);
+                    _index++;
+                }
+                break;
+        }
+        maps = zone_Template.mapList;
+        List<int> indexs = new List<int>();
+        //新建探索地图
+        foreach (var item in maps)
+        {
+            indexs.Add(AddExploreMap(item, (int)time));
+        }
+        //通知界面刷新区域
+        EventDispatcher.Instance.FortEvent.DispatchEvent(EventId.FortShow, FortShowEvent.RefreshZone, zoneID, (object)new ZoneRefresh
+        {
+            zone = this,
+            zoneID = zoneID,
+            zoneState = zoneState,
+            refreshTime = time,
+            addMapIndex = indexs,
+        });
+    }
+
+    /// <summary>
+    /// 添加探索地图
+    /// </summary>
+    public int AddExploreMap(int mapID, int time)
+    {
+        Map_template map_Template = Map_templateConfig.GetMap_templat(mapID);
+        if (map_Template == null) return -1;
+        //
+        List<int> unusables = (from item in exploreMaps.Values where item.MapId == mapID select item.PosIndex).ToList();
+        //
+        int index = 0;
+        //todo 修改新建地图
+        //List<int> list=new List<int>(){(int) map_Template.position[0], (int)map_Template.position[1] };
+        //index = GetUseMapPosIndex(list, unusables);
+        //if (index == -1) return -1;
+        //
+        index = exploreMaps.Keys.Count;
+        exploreMaps.Add(index, new ExploreMap(mapID, time, index, this));
+        return index;
+    }
+    /// <summary>
+    /// 移出该地图
+    /// </summary>
+    public void RemoveExploreMap(int index)
+    {
+        exploreMaps.Remove(index);
+    }
+
+    /// <summary>
+    /// 刷新地图
+    /// </summary>
+    public void RefreshMaps(float time)
+    {
+        //得到需要销毁的地图ID
+        List<int> destroyIndexs = new List<int>();
+        foreach (var item in exploreMaps)
+        {
+            if (item.Value.IsExploring) continue;
+            if (!item.Value.IsDestroy(time)) continue;
+            destroyIndexs.Add(item.Value.PosIndex);
+        }
+        //删除销毁的地图
+        for (int i = destroyIndexs.Count - 1; i >= 0; i--)
+        {
+            exploreMaps.Remove(destroyIndexs[i]);
+        }
+        //
+        EventDispatcher.Instance.FortEvent.DispatchEvent(EventId.FortShow, FortShowEvent.RefreshMap, zoneID,
+            (object)new ZoneRefreshMap { refreshTime = time, destroyMapPos = destroyIndexs });
+    }
+
+    /// <summary>
+    /// 获得要塞数据
+    /// </summary>
+    /// <returns></returns>
+    public ZoneData GetFortData()
+    {
+        ZoneData zoneData = new ZoneData
+        {
+            firstRefreshTime = firstRefreshTime,
+            fortID = fortID,
+            zoneID = zoneID,
+            fortType = fortType,
+            ZoneState = ZoneState,
+        };
+        foreach (var item in exploreMaps)
+        {
+            zoneData.exploreMaps.Add(item.Key, item.Value.GetExplorMapData());
+        }
+        return zoneData;
+    }
+    /// <summary>
+    /// 添加一次性事件
+    /// </summary>
+    public void AddComDisEvent(int eventID)
+    {
+        comDisEvents.Add(eventID);
+    }
+
+    public float RefreshSurplusTime(float time)
+    {
+        return zone_Template.resetCycle - ((int)time - firstRefreshTime) % zone_Template.resetCycle;
+    }
+
+    /// <summary>
+    /// 选择地图id
+    /// </summary>
+    /// <param name="maps">地图列表</param>
+    /// <param name="chance">几率</param>
+    /// <returns>-1即没有选中地图</returns>
+    private void SelectMapID(List<int> maps, int chance, List<int> selectMaps)
+    {
+        int mapID = RandomBuilder.RandomNum(10000) <= chance ? RandomBuilder.RandomList(1, maps)[0] : -1;
+        if (mapID != -1) selectMaps.Add(mapID);
+    }
+
+    /// <summary>
+    /// 获得地图可以用的位置
+    /// </summary>
+    /// <returns></returns>
+    private int GetUseMapPosIndex(List<int> sumList, List<int> unusables)
+    {
+        var usables = new List<int>();
+        foreach (var item in sumList)
+        {
+            if (unusables.Contains(item)) continue;
+            usables.Add(item);
+        }
+        return usables.Count > 1 ? RandomBuilder.RandomList(1, usables)[0] : -1;
+    }
+
+
+    /// <summary>
+    /// 获得地图可以用的位置
+    /// </summary>
+    /// <returns></returns>
+    private int GetUseMapPosIndex()
+    {
+        List<int> unusables = new List<int>();
+        List<int> list = new List<int>();
+        for (int i = 0; i < 24; i++)
+        {
+            if (unusables.Contains(i) || exploreMaps.ContainsKey(i)) continue;
+            list.Add(i);
+        }
+        //有可以用的位置
+        if (list.Count > 1) return RandomBuilder.RandomList(1, list)[0];
+        //
+        return -1;
+    }
+    //
+    private int firstRefreshTime;
+    private int fortID;
+    private int zoneID;
+    // 要塞类型
+    private FortType fortType;
+    /// <summary>
+    /// 要塞状态1=新 、2=旧
+    /// </summary>
+    private ZoneState zoneState;
+    private Dictionary<int, ExploreMap> exploreMaps = new Dictionary<int, ExploreMap>();
+    /// <summary>
+    /// 已完成的一次性事件
+    /// </summary>
+    private List<int> comDisEvents = new List<int>();
+    //
+    private Zone_template zone_Template;
+    private Fort_template fortTemplate;
+}
+
+
+public class ZoneRefreshMap
+{
+    public float refreshTime;
+    public List<int> destroyMapPos = new List<int>();
+}
+
+public class ZoneRefresh
+{
+    public Zone zone;
+    public int zoneID;
+    public ZoneState zoneState;
+    public float refreshTime;
+    public List<int> addMapIndex = new List<int>();
+}
+
+/// <summary>
+/// 区域状态
+/// </summary>
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public enum ZoneState
+{
+    /// <summary>
+    /// 旧
+    /// </summary>
+    Old = 1,
+    /// <summary>
+    /// 新
+    /// </summary>
+    New = 2,
+}
+
+/// <summary>
+/// 要塞类型
+/// </summary>
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public enum FortType
+{
+    /// <summary>
+    /// 主城
+    /// </summary>
+    Base = 0,
+    /// <summary>
+    /// 要塞
+    /// </summary>
+    Fortress = 1,
+    /// <summary>
+    /// 矿井
+    /// </summary>
+    Mine = 2,
+}
+
+/// <summary>
+/// 区域数据
+/// </summary>
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public class ZoneData
+{
+    public int firstRefreshTime;
+    public int fortID;
+    public int zoneID;
+    // 要塞类型
+    public FortType fortType;
+    /// <summary>
+    /// 要塞状态1=新 、2=旧
+    /// </summary>
+    public ZoneState ZoneState;
+    public Dictionary<int, ExplorMapData> exploreMaps = new Dictionary<int, ExplorMapData>();
+}

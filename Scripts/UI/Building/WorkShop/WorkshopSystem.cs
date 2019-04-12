@@ -1,0 +1,291 @@
+﻿using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using ProtoBuf;
+
+/// <summary>
+/// 工坊系统
+/// </summary>
+public class WorkshopSystem: Building
+{
+
+    public static WorkshopSystem Instance { get; private set; }
+    //
+    private const string WorkshopPath = "Workshop";
+    //
+    //
+    private WorkshopData workshopData;
+    //
+
+    public WorkshopSystem() { Instance = this; }
+
+    public override void Init()
+    {
+        if(workshopData == null) workshopData = new WorkshopData();
+    }
+
+    /// <summary>
+    /// 读取存档信息
+    /// </summary>
+    /// <param name="parentPath"></param>
+    public override void ReadData(string parentPath)
+    {
+        this.parentPath = parentPath;
+        workshopData = GameDataManager.ReadData<WorkshopData>(parentPath + WorkshopPath) as WorkshopData;
+    }
+
+    public override void SaveData(string parentPath)
+    {
+
+        GameDataManager.SaveData(parentPath,WorkshopPath,workshopData);
+    }
+
+
+
+    #region 装备研究
+
+    public void AddResearch(EquipResearchInfo equipResearchInfo)
+    {
+        workshopData.ResearchList.Add(equipResearchInfo);
+    }
+
+    public EquipResearchInfo RemoveResearch(string id)
+    {
+        EquipResearchInfo info = GetEquipResearchInfo(id);
+        workshopData.ResearchList.Remove(info);
+        return info;
+    }
+
+
+    public EquipResearchInfo GetEquipResearchInfo(string id)
+    {
+        EquipResearchInfo info = null;
+        for(int i = 0; i < workshopData.ResearchList.Count; i++)
+        {
+            if(workshopData.ResearchList[i].WorkId == id)
+            {
+                info = workshopData.ResearchList[i];
+                break;
+            }
+        }
+        return info;
+    }
+
+    public List<EquipResearchInfo> GetNowWorkResearchList()
+    {
+        List<EquipResearchInfo> list = new List<EquipResearchInfo>();
+        for(int i = 0; i < workshopData.ResearchList.Count; i++)
+        {
+            list.Add(workshopData.ResearchList[i]);
+        }
+        return list;
+    }
+
+    public void AddRessTime(int time)
+    {
+        for(int i = 0; i < workshopData.ResearchList.Count; i++)
+        {
+            workshopData.ResearchList[i].HaveUseTime += time;
+        }
+    }
+
+    public List<EquipResearchInfo> GetResearchList()
+    {
+        return workshopData.ResearchList;
+    }
+
+    public int GetResearchLevel(int type)
+    {
+        if(!workshopData.ERInfoDict.ContainsKey(type))
+        {
+            ERTypeInfo info = new ERTypeInfo();
+            info.ERType = type;
+            info.Exp = 0;
+            info.Level = 1;
+            workshopData.ERInfoDict.Add(type,info);
+            return workshopData.ERInfoDict[type].Level;
+        }
+        //todo
+        if(workshopData.ERInfoDict[type].Level < 1)
+            workshopData.ERInfoDict[type].Level = 1;
+        return workshopData.ERInfoDict[type].Level;
+    }
+
+    public void SetLevel(int type,int level)
+    {
+        if(!workshopData.ERInfoDict.ContainsKey(type))
+        {
+            ERTypeInfo eRTypeInfo = new ERTypeInfo();
+            eRTypeInfo.Level = level;
+            workshopData.ERInfoDict.Add(type,eRTypeInfo);
+        }
+        else
+        {
+            workshopData.ERInfoDict[type].Level = level;
+        }
+    }
+
+    public void AddExp(int type,float exp)
+    {
+        if(!workshopData.ERInfoDict.ContainsKey(type))
+        {
+            ERTypeInfo eRTypeInfo = new ERTypeInfo();
+            eRTypeInfo.Exp = exp;
+            workshopData.ERInfoDict.Add(type,eRTypeInfo);
+        }
+        else
+        {
+            workshopData.ERInfoDict[type].Exp += exp;
+        }
+    }
+
+    public float GetExp(int type)
+    {
+        if(workshopData.ERInfoDict.ContainsKey(type))
+        {
+            return workshopData.ERInfoDict[type].Exp;
+        }
+        return 0;
+    }
+
+
+    public void AddMinEquipMakeLevel(int type,int addLevel)
+    {
+        if(addLevel == 0)
+            return;
+
+        if(!workshopData.MinLevel.ContainsKey(type))
+        {
+            workshopData.MinLevel.Add(type,addLevel);
+        }
+        else
+        {
+            workshopData.MinLevel[type] += addLevel;
+        }
+    }
+
+    public int GetEquipMakeMinLevel(int type)
+    {
+        if(workshopData.MinLevel.ContainsKey(type))
+        {
+            return workshopData.MinLevel[type];
+        }
+        return 0;
+    }
+
+    #endregion
+
+
+}
+
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public class WorkInfo
+{
+    /// <summary>
+    /// 序列id
+    /// </summary>
+    public int WorkId;
+    /// <summary>
+    /// 需要的时间时间
+    /// </summary>
+    public int NeedTime;
+    /// <summary>
+    /// 精炼放入的堆叠数
+    /// </summary>
+    public int StackCost;
+    /// <summary>
+    /// 是否扣除每日消耗成功
+    /// </summary>
+    public bool SubManaSuc;
+    /// <summary>
+    /// 已经累积的值 这个值每天会被情况
+    /// </summary>
+    public float HaveAddValue;
+    /// <summary>
+    /// 总共的累计值
+    /// </summary>
+    public float AllAddValue;
+    /// <summary>
+    /// 每日产量
+    /// </summary>
+    public float DayAdd;
+    /// <summary>
+    /// 消耗的物品信息
+    /// </summary>
+    public List<ItemDefine> CostItem = new List<ItemDefine>();
+}
+
+
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public class EquipResearchInfo
+{
+    /// <summary>
+    /// 唯一标识符
+    /// </summary>
+    public string WorkId;
+    /// <summary>
+    /// 需要的时间时间
+    /// </summary>
+    public float NeedTime;
+    /// <summary>
+    /// 已经使用了的时间
+    /// </summary>
+    public int HaveUseTime;
+    /// <summary>
+    /// 是否扣除每日消耗成功
+    /// </summary>
+    public bool SubManaSuc;
+    /// <summary>
+    /// 研究的Id
+    /// </summary>
+    /// </summary>
+    public int EquipId;
+    /// <summary>
+    /// 配置表Id
+    /// </summary>
+    //public int EquipInstanceId;
+    /// <summary>
+    /// 开始研究时已经活得的经验
+    /// </summary>
+    public float Exp;
+    /// <summary>
+    /// 开始研究时的等级
+    /// </summary>
+    public int Level;
+}
+
+
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public class ERTypeInfo
+{
+    /// <summary>
+    /// 类型
+    /// </summary>
+    public int ERType;
+    /// <summary>
+    /// 当前等级
+    /// </summary>
+    public int Level;
+    /// <summary>
+    /// 累加的经验
+    /// </summary>
+    public float Exp;
+}
+
+[ProtoContract(ImplicitFields = ImplicitFields.AllFields)]
+public class ItemDefine
+{
+    public int TemplateId;
+    public int ItemId;
+    public int ItemNum;
+    public ItemDefine(int templateId,int id,int num)
+    {
+        TemplateId = templateId;
+        ItemId = id;
+        ItemNum = num;
+        TemplateId = templateId;
+    }
+}
+
+
+

@@ -1,0 +1,141 @@
+﻿using EventCenter;
+using UnityEngine;
+using UnityEngine.UI;
+using System;
+
+namespace Char.View
+{
+    public partial class CharPanel
+    {
+        private GameObject m_equipObj;
+        private GameObject m_charListObj;
+        private GameObject m_attrObj;
+
+        private CharListView m_charListView;
+        private CharInfo m_charInfo;
+        private EquipListViewPanel m_equipPanel;
+        private DetialInfo m_detialInfo;
+
+        private CharAttribute m_char;
+
+        private TogGroup m_tog;
+        private ScrollRect m_rect;
+
+        private int m_currentIndex = -1;
+
+        protected override void OnAwake()
+        {
+            m_charInfo = Utility.RequireComponent<CharInfo>(transform.Find("Character").gameObject);
+
+            m_attrObj = transform.Find("AttrPanel").gameObject;
+            GameObject obj = transform.Find("AttrPanel/Parent/AttrPanel").gameObject;
+            m_rect = obj.transform.Find("Scroll").GetComponent<ScrollRect>();
+            m_rect.onValueChanged.AddListener(ScrollRectChange);
+            m_detialInfo = Utility.RequireComponent<DetialInfo>(obj);
+            m_detialInfo.InitComponent();
+
+            m_equipObj = transform.Find("EquipListViewPanel").gameObject;
+            m_equipPanel = Utility.RequireComponent<EquipListViewPanel>(m_equipObj);
+            m_equipPanel.InitComponent1(ClickEquipCallBack);
+
+            m_charListObj = transform.Find("CharListViewPanel").gameObject;
+            m_charListView = Utility.RequireComponent<CharListView>(m_charListObj);
+            m_charListView.InitComponent(ClickCharCallBack);
+
+            Utility.AddButtonListener(transform.Find("Btn/Back/Btn"),ClickBackBtn);
+
+            m_tog = transform.Find("Btn").GetComponent<TogGroup>();
+            m_tog.Init(ClickBtn,2);
+
+            EventManager.Instance.TriggerEvent(EventSystemType.UI,EventTypeNameDefine.UpdateSepcialCamera,true);
+        }
+
+        private void ScrollRectChange(Vector2 arg0)
+        {
+            EventManager.Instance.TriggerEvent(EventSystemType.UI,EventTypeNameDefine.HideCharAttrTip);
+        }
+
+        protected override void OnHide()
+        {
+            m_charListView.Free();
+            m_equipPanel.Free();
+            m_detialInfo.Free();
+            m_charInfo.Free();
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.CharList);
+            EventManager.Instance.TriggerEvent(EventSystemType.UI,EventTypeNameDefine.UpdateSepcialCamera,false);
+            m_rect.onValueChanged.RemoveAllListeners();
+        }
+
+        private void ClickBtn(int index)
+        {
+            if(m_char == null)
+                return;
+            if(m_currentIndex == index)
+                return;
+            m_currentIndex = index;
+            switch(index)
+            {
+                case 0:
+                    ClickAttr();
+                    break;
+                case 1:
+                    ClickEquip();
+                    break;
+                case 2:
+                    ClickEquip();
+                    break;
+            }
+        }
+
+        private void ClickEquip()
+        {
+            m_equipPanel.ClickTag(0);
+        }
+
+        private void ClickAttr()
+        {
+            //if(m_attrObj.activeSelf)
+            //{
+            //    m_attrObj.SetActive(false);
+            //    m_charListObj.SetActive(true);
+            //    m_switchBtn.SetActive(false);
+            //}
+            //else
+            //{
+            //    m_charListObj.SetActive(false);
+            //    m_equipObj.SetActive(false);
+            //    m_attrObj.SetActive(true);
+            //}
+            //m_switchBtn.SetActive(m_attrObj.activeSelf);
+            //if(m_switchBtn.activeSelf)
+            //    m_switchBtn.transform.localPosition = m_attrPos;
+        }
+
+
+        private void ClickBackBtn()
+        {
+            //if(m_attrObj.activeSelf)
+            //{
+            //    ClickSwitchBtn();
+            //    return;
+            //}
+            //if(m_equipObj.activeSelf)
+            //{
+            //    ClickSwitchBtn();
+            //    return;
+            //}
+            if(m_charInfo.IsInChangeNameState())
+            {
+                m_charInfo.CancelChangeName();
+                return;
+            }
+            UIPanelManager.Instance.Hide<CharPanel>();
+        }
+
+        private void ClickSwitchBtn()
+        {
+            if(m_currentIndex != -1)
+                m_tog.ClickTog(2);
+        }
+    }
+}

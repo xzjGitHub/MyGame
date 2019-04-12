@@ -1,0 +1,627 @@
+﻿using System.Collections.Generic;
+using System.Linq;
+
+/// <summary>
+/// EventAttribute
+/// </summary>
+public partial class EventAttribute
+{
+    /// <summary>
+    /// 事件Id
+    /// </summary>
+    public int eventId;
+
+    /// <summary>
+    /// 路点Id
+    /// </summary>
+    public int waypointId;
+
+    /// <summary>
+    /// 是否访问过
+    /// </summary>
+    public bool isCall;
+    /// <summary>
+    /// 事件等级
+    /// </summary>
+    public int eventLevel;
+    /// <summary>
+    /// 基本物品奖励列表
+    /// </summary>
+    public List<ItemData> baseRewardItems { get { return GetEventItemRewards(GetFinalRewardLevel()); } }
+
+    /// <summary>
+    /// 高级物品奖励
+    /// </summary>
+    public List<ItemData> finalRewardItem { get { return GetEventItemRewards(GetFinalRewardLevel(false)); } }
+
+    /// <summary>
+    /// 生命球数量___奖励在选项中
+    /// </summary>
+    public int healingGlobSum { get { return 0; } }
+
+    /// <summary>
+    /// 高级奖励几率1-100
+    /// </summary>
+    public int jackpotChance;
+    /// <summary>
+    /// 成功率随机值
+    /// </summary>
+    public float successChanceRandom;
+
+    public int EventIndex { get { return eventIndex; } }
+
+    /// <summary>
+    /// 最终怪物等级
+    /// </summary>
+    public float finalMobLevel { get { return event_template.addMobLevel; } }
+
+    public int MobTeamId { get { return mobTeamID; } }
+
+    public List<CombatUnit> MobCombats { get { return mobCombats; } }
+
+    public int EventPos { get { return eventPosIndex; } }
+
+    public WPEventType EventType { get { return eventType; } }
+
+    public float VisitHPCost { get { return visitHPCost; } }
+
+    public float FailedHPCost { get { return failedHPCost; } }
+
+    public int AddLevel { get { return addLevel; } }
+    /// <summary>
+    ///1=道中 2=陷阱 3=草丛上 3=草丛下
+    /// </summary>
+    public int EventPosType { get { return eventPosType; } }
+
+    public float ScenePos { get { return scenePos; } }
+
+    public int SceneIndex { get { return sceneIndex; } }
+
+    public Dictionary<int, List<int>> RandomOptions { get { return randomOptions; } }
+
+    public List<WPEventFSType> FixedOptions { get { return fixedOptions; } }
+
+    public int NowPhase { get { return nowPhase; } }
+
+    public List<SelectionAttribute> FaildSelections
+    {
+        get
+        {
+            return faildSelections;
+        }
+    }
+
+    public Dictionary<int, List<SelectionAttribute>> Selections
+    {
+        get
+        {
+            return selections;
+        }
+    }
+
+    public int PhaseSum
+    {
+        get
+        {
+            return phaseSum;
+        }
+    }
+
+    public bool isHaveSmoke;
+
+    /// <summary>
+    /// 最终角色经验奖励_对每个角色
+    /// </summary>
+    public float FinalCharExpReward(float finalCharExpBonus)
+    {
+        Mob_mobteam mob_Mobteam = Mob_mobteamConfig.GetMobMobteam(mobTeamID);
+        if (mob_Mobteam == null)
+        {
+            return 0;
+        }
+        //
+        return mob_Mobteam.baseCharExpReward * (1 + finalCharExpBonus);
+    }
+
+    public void SetPhase(int value)
+    {
+        nowPhase = value;
+    }
+
+    public void SetMobTeamID(int value)
+    {
+        mobTeamID = value;
+        //创建怪物
+        mobCombats.Clear();
+        Mob_mobteam mobteam = Mob_mobteamConfig.GetMobMobteam(mobTeamID);
+        if (mobteam == null)
+        {
+            return;
+        }
+        mobCombats = CreatMobUnits(mobteam.mobList);
+    }
+
+    /// <summary>
+    /// 点击深入选项
+    /// </summary>
+    /// <param name="selectionID"></param>
+    public void OnClickNextOption(int selectionID)
+    {
+        nowPhase++;
+        finalOARewardBonus += Event_selectionConfig.GetSelection(selectionID).tempOARewardBonus;
+        //更新值
+        foreach (KeyValuePair<int, List<SelectionAttribute>> item in Selections)
+        {
+            foreach (SelectionAttribute temp in item.Value)
+            {
+                temp.finalRewardBonus = finalOARewardBonus;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 获得奖励结果
+    /// </summary>
+    /// <param name="type"></param>
+    /// <param name="optionValue"></param>
+    public WPVisitEventResult GetRewardItems(WPEventSelectionType type, int optionValue)
+    {
+        WPVisitEventResult result = null;
+        //switch (type)
+        //{
+        //    case WPEventSelectionType.Fixed:
+        //        switch ((WPEventFSType)optionValue)
+        //        {
+        //            //给与基础奖励
+        //            case WPEventFSType.JInbi:
+        //            case WPEventFSType.MoLi:
+        //            case WPEventFSType.ZhanDou:
+        //            case WPEventFSType.TiaoZhan:
+        //            case WPEventFSType.YouJi:
+        //            case WPEventFSType.KaiQi:
+        //            case WPEventFSType.JieKai:
+        //            case WPEventFSType.CuiHui:
+        //            case WPEventFSType.JieChu:
+        //                result = new WPVisitEventResult
+        //                {
+        //                    isSucceed = true,
+        //                    itemRewards = GetEventItemRewards(GetFinalRewardLevel()),
+        //                    healingGlobSum = healingGlobSum,
+        //                };
+        //                break;
+        //            case WPEventFSType.CaiFu:
+        //                result = new WPVisitEventResult
+        //                {
+        //                    isSucceed = true,
+        //                    itemRewards = GetEventItemRewards(GetFinalRewardLevel()),
+        //                };
+        //                break;
+        //            case WPEventFSType.ZhiLiao:
+        //                result = new WPVisitEventResult
+        //                {
+        //                    isSucceed = true,
+        //                    healingGlobSum = healingGlobSum,
+        //                };
+        //                break;
+        //        }
+        //        break;
+        //    case WPEventSelectionType.Random:
+        //        SelectionAttribute selectionAttribute = new SelectionAttribute(optionValue, 0, this);
+        //        switch ((WPEventRSType)optionValue)
+        //        {
+        //            case WPEventRSType.Next:
+        //            case WPEventRSType.AdvancedNext:
+        //                break;
+        //            case WPEventRSType.Visit:
+        //            case WPEventRSType.AdvancedVisit:
+        //                result = new WPVisitEventResult
+        //                {
+        //                    isSucceed = true,
+        //                    itemRewards = selectionAttribute.GetEventItemRewards(),
+        //                    healingGlobSum = selectionAttribute.finalGlobReward,
+        //                };
+        //                break;
+        //        }
+        //        break;
+        //}
+
+        return result;
+    }
+
+    /// <summary>
+    /// 新建
+    /// </summary>
+    public EventAttribute(int _eventId, int _waypointId, int sceneIndex, float eventPos, int eventPosType, TeamAttribute _teamAttribute, int baseWPLevel, bool isHaveSmoke = true)
+    {
+        this.sceneIndex = sceneIndex;
+        this.eventPosType = eventPosType;
+        scenePos = eventPos;
+        Init(_eventId, _waypointId, _teamAttribute, baseWPLevel, isHaveSmoke);
+    }
+
+    public void SetEventIndex(int value)
+    {
+        eventIndex = value;
+    }
+
+    /// <summary>
+    /// 初始化
+    /// </summary>
+    private void Init(int _eventId, int _waypointId, TeamAttribute _teamAttribute, int baseWPLevel, bool isHaveSmoke = true)
+    {
+        eventId = _eventId;
+        waypointId = _waypointId;
+        teamAttribute = _teamAttribute;
+        this.isHaveSmoke = isHaveSmoke;
+        //
+        event_Config = Event_configConfig.GetConfig();
+        event_template = Event_templateConfig.GetEventTemplate(_eventId);
+        if (event_template == null)
+        {
+            return;
+        }
+        selections.Clear();
+        wp_template = WP_templateConfig.GetWpTemplate(_waypointId);
+        eventType = (WPEventType)event_template.eventType;
+        eventLevel = wp_template.WPLevel + baseWPLevel;
+        failedHPCost = event_template.failedHPCost;
+        //创建怪物
+        mobCombats = CreatMobList(event_template.mobTeamList);
+        //获得成功率
+        GetSuccessChance();
+        //
+        CreateSeletion();
+        //CreateRandomOption();
+        //CreateFixedOption();
+    }
+
+    /// <summary>
+    /// 创建选项
+    /// </summary>
+    private void CreateSeletion()
+    {
+        switch (eventType)
+        {
+            case WPEventType.Abnormal:
+                //添加失败选项
+                faildSelections.Clear();
+                foreach (int id in event_template.faildSelectionList)
+                {
+                    faildSelections.Add(CreateSelectionAttribute(id, 0));
+                }
+                //添加随机选项
+                for (int i = 0; i < event_template.maxPhase; i++)
+                {
+                    if (RandomBuilder.RandomIndex_Chances(new List<float> { event_template.addPhaseChance[i] }, 1) != 0)
+                    {
+                        break;
+                    }
+                    phaseSum++;
+                }
+                //得到每个随机选项的阶段需求
+                Dictionary<int, int> seletionLevelReq = new Dictionary<int, int>();//key=选项id,value=阶段需求
+                foreach (int id in event_template.rndSelectionList)
+                {
+                    Event_selection selection = Event_selectionConfig.GetSelection(id);
+                    if (selection == null)
+                    {
+                        continue;
+                    }
+                    seletionLevelReq.Add(id, selection.phaseReq);
+                }
+                //生成随机选项列表
+                Event_config eventConfig = Event_configConfig.GetConfig();
+
+                for (int i = 1; i <= phaseSum; i++)
+                {
+                    int phase = i;
+                    //选出当前阶段可以用的选项
+                    List<int> selectionIDs = (from a in seletionLevelReq where a.Value <= phase select a.Key).ToList();
+                    //添加一个深入
+
+                    if (phase != phaseSum && event_template.selectionList.Count >= phase)
+                    {
+                        int id = event_template.selectionList[phase - 1][0];
+                        selections.Add(phase, new List<SelectionAttribute>() { CreateSelectionAttribute(id, phase) });
+                    }
+
+                    //没有可用的选项
+                    if (selectionIDs.Count == 0)
+                    {
+                        continue;
+                    }
+                    //计算选项的总数
+                    int selectionSum;
+                    //不是最后一层
+                    if (phase != phaseSum)
+                    {
+                        selectionSum = RandomBuilder.RandomIndex_Chances(new List<float>
+                        {
+                            10000 - eventConfig.pathCountChance[0] - eventConfig.pathCountChance[1],
+                            eventConfig.pathCountChance[0],
+                            eventConfig.pathCountChance[1]
+                        });
+                        selectionIDs = RandomBuilder.RandomValues(selectionIDs, selectionSum);
+                        foreach (int item in selectionIDs)
+                        {
+                            if (!selections.ContainsKey(phase))
+                            {
+                                selections.Add(phase, new List<SelectionAttribute>());
+                            }
+                            selections[phase].Add(CreateSelectionAttribute(item, phase));
+                        }
+                    }
+                    else
+                    {
+                        //大奖检测
+                        int jackpotSelection = event_template.jackpotSelection;
+                        Event_selection temp = Event_selectionConfig.GetSelection(jackpotSelection);
+                        selectionSum = RandomBuilder.RandomIndex_Chances(new List<float>
+                        {
+                            10000 - eventConfig.endCountChance[0] - eventConfig.endCountChance[1],
+                            eventConfig.endCountChance[0],
+                            eventConfig.endCountChance[1]
+                        });
+                        //
+                        if (phase >= temp.phaseReq)
+                        {
+                            if (RandomBuilder.RandomIndex_Chances(new List<float> { event_template.jackpotChance }, 1) != 0)
+                            {
+                                jackpotSelection = 0;
+                            }
+                            else
+                            {
+                                selectionSum--;
+                            }
+                        }
+                        selectionIDs = RandomBuilder.RandomValues(selectionIDs, selectionSum);
+                        if (jackpotSelection != 0)
+                        {
+                            selectionIDs.Add(jackpotSelection);
+                        }
+
+                        foreach (int item in selectionIDs)
+                        {
+                            if (!selections.ContainsKey(phase))
+                            {
+                                selections.Add(phase, new List<SelectionAttribute>());
+                            }
+                            selections[phase].Add(CreateSelectionAttribute(item, phase));
+                        }
+                    }
+                }
+                break;
+            default:
+                //添加默认选项
+                selections.Add(0, new List<SelectionAttribute> { CreateSelectionAttribute(event_template.selectionList[0][0], 0) });
+                //添加其他选项
+                for (int i = 0; i < event_template.maxPhase; i++)
+                {
+                    if (RandomBuilder.RandomIndex_Chances(new List<float> { event_template.addPhaseChance[i] }, 1) != 0)
+                    {
+                        break;
+                    }
+                    phaseSum++;
+                    List<SelectionAttribute> temp = new List<SelectionAttribute>();
+
+                    foreach (int id in event_template.selectionList[i])
+                    {
+                        temp.Add(CreateSelectionAttribute(id, i + 1));
+                    }
+                    selections.Add(i + 1, temp);
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 创建选项属性
+    /// </summary>
+    /// <param name="id"></param>
+    /// <returns></returns>
+    private SelectionAttribute CreateSelectionAttribute(int id, int phase)
+    {
+        if (id == 0)
+        {
+            LogHelperLSK.LogError(id);
+        }
+        return new SelectionAttribute(id, phase, this);
+    }
+
+    /// <summary>
+    /// 创建怪物单元
+    /// </summary>
+    /// <param name="mobs"></param>
+    /// <returns></returns>
+    private List<CombatUnit> CreatMobUnits(List<int> mobs)
+    {
+        List<CombatUnit> list = new List<CombatUnit>();
+        for (int i = 0; i < mobs.Count; i++)
+        {
+            Mob_template template = Mob_templateConfig.GetTemplate(mobs[i]);
+            if (template!=null)
+            {
+                list.Add(new CombatUnit(new MobAttribute(new CharCreate(mobs[i]) { charID = i }), i));
+            }
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 获得添加等级
+    /// </summary>
+    private int GetAddLevel(float chance, int maxLevel)
+    {
+        int addLevel = 0;
+        //第一种检测
+        while (addLevel < maxLevel)
+        {
+            if (RandomBuilder.RandomIndex_Chances(new List<float> { chance }) != 0)
+            {
+                return addLevel;
+            }
+
+            addLevel++;
+        }
+
+        return addLevel;
+    }
+
+    /// <summary>
+    /// 获得成功率
+    /// </summary>
+    private void GetSuccessChance()
+    {
+        Game_config gameConfig = Game_configConfig.GetGame_Config();
+        successChanceRandom = RandomBuilder.Random_Normal(1 + gameConfig.successDevi, 1 - gameConfig.successDevi) * 100 / 100f;
+        //
+        jackpotChance = event_template.resultChance.Count > 0 ? event_template.resultChance[0] : 0;
+    }
+    /// <summary>
+    /// 创建怪物表
+    /// </summary>
+    private List<CombatUnit> CreatMobList(List<int> mobTeams)
+    {
+        if (mobTeams == null || mobTeams.Count == 0)
+        {
+            return new List<CombatUnit>();
+        }
+        //
+        mobTeamID = RandomBuilder.RandomList(1, mobTeams)[0];
+        Mob_mobteam mobteam = Mob_mobteamConfig.GetMobMobteam(mobTeamID);
+        if (mobteam == null)
+        {
+            return new List<CombatUnit>();
+        }
+
+        return CreatMobUnits(mobteam.mobList);
+    }
+
+    /// <summary>
+    /// 得到物品奖励
+    /// </summary>
+    private List<ItemData> GetEventItemRewards(List<float> _rewardLevel)
+    {
+        List<int> _rewardSet = event_template.itemRewardSet;
+        if (_rewardSet == null || _rewardSet.Count == 0)
+        {
+            return null;
+        }
+
+        return
+            ItemSystem.Instance.Itemrewards_ItemDate(new ItemRewardInfo(_rewardLevel, _rewardSet,
+                eventLevel + event_template.addItemLevel));
+    }
+
+    /// <summary>
+    /// 获得最终奖励等级
+    /// </summary>
+    private List<float> GetFinalRewardLevel(bool isBase = true)
+    {
+        return event_template.baseRewardLevel.Select((t, i) => FinalRewardLevel(t, i, isBase)).ToList();
+    }
+
+    /// <summary>
+    /// 最终奖励等级
+    /// </summary>
+    private float FinalRewardLevel(float baseRewardLevel, int _index, bool isBase)
+    {
+        if (event_template.addRewardValue.Count <= _index)
+        {
+            return baseRewardLevel * finalRewardLevelFactor;
+        }
+
+        float finalRewardLevel = 0;
+
+        switch (challengeType)
+        {
+            case 0:
+                finalRewardLevel = baseRewardLevel * (1 + event_Config.RLBonus[0]);
+                break;
+            case 1:
+            case 2:
+            case 3:
+                finalRewardLevel = baseRewardLevel;
+                break;
+            case 4:
+            case 5:
+                finalRewardLevel = baseRewardLevel * (1 + event_Config.RLBonus[1]);
+                break;
+        }
+        //修正
+        finalRewardLevel *= RandomBuilder.RandomNum(1 + event_Config.eventDeviation, 1 - event_Config.eventDeviation);
+        return finalRewardLevel * finalRewardLevelFactor;
+    }
+    //
+    private int nowPhase;
+    private int phaseSum;
+    private float finalRewardLevelFactor = 1;
+    private int amendSum;
+    private int eventPosType;
+    private float scenePos;
+    private int sceneIndex;
+    /// <summary>
+    /// 事件位置索引
+    /// </summary>
+    private int eventPosIndex;
+    private int eventIndex;
+    private WPEventType eventType;
+    private int mobTeamID;
+    private float visitHPCost;
+    private float failedHPCost;
+    private int addLevel;
+    private int challengeType;
+    private bool isHaveRO;
+    private float finalOARewardBonus;
+    /// <summary>
+    /// 随机选项 key=层数，value=选项ID列表
+    /// </summary>
+    private Dictionary<int, List<int>> randomOptions = new Dictionary<int, List<int>>();
+    private List<WPEventFSType> fixedOptions = new List<WPEventFSType>();
+    /// <summary>
+    /// 选项列表 key=层数，value=每层的选项列表
+    /// </summary>
+    private Dictionary<int, List<SelectionAttribute>> selections = new Dictionary<int, List<SelectionAttribute>>();
+    private List<SelectionAttribute> faildSelections = new List<SelectionAttribute>();
+    //
+    private List<CombatUnit> mobCombats = new List<CombatUnit>();
+    private Event_config event_Config;
+}
+
+/// <summary>
+/// 路点事件固定选项类型
+/// </summary>
+public enum WPEventFSType
+{
+    ZhanDou = 2,
+    TiaoZhan = 3,
+    YouJi = 4,
+    JInbi = 5,
+    MoLi = 6,
+    KaiQi = 7,
+    JieKai = 8,
+    CuiHui = 9,
+    JieChu = 10,
+    ZhiLiao = 11,
+    CaiFu = 12,
+}
+
+public enum WPEventRSType
+{
+    /// <summary>
+    /// 深入
+    /// </summary>
+    Next = 1,
+    /// <summary>
+    /// 高级深入
+    /// </summary>
+    AdvancedNext = 2,
+    /// <summary>
+    /// 访问
+    /// </summary>
+    Visit = 3,
+    /// <summary>
+    /// 高级访问
+    /// </summary>
+    AdvancedVisit = 4,
+}

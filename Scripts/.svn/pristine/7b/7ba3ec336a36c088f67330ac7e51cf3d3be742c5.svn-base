@@ -1,0 +1,921 @@
+﻿using MCCombat;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+/// <summary>
+/// 战斗单位
+/// </summary>
+public class CombatUnit
+{
+    public int TemplateID { get { return charAttribute.templateID; } }
+    public int CharID { get { return charAttribute.charID; } }
+
+    public int nowActionCount = -1;
+    /// <summary>
+    /// 队伍ID
+    /// </summary>
+    public int teamId;
+    /// <summary>
+    /// 队伍类型
+    /// </summary>
+    public TeamType teamType;
+    /// <summary>
+    /// 角色属性
+    /// </summary>
+    public CharAttribute charAttribute;
+    /// <summary>
+    /// 角色类型
+    /// </summary>
+    public int charType;
+    /// <summary>
+    /// 初始化速度:为所在列表中index
+    /// </summary>
+    public int initialSpeed;
+    /// <summary>
+    /// 最终行动速度
+    /// </summary>
+    public int finalSpeed;
+    /// <summary>
+    /// 行动ID
+    /// </summary>
+    public int actionId;
+    /// <summary>
+    /// 临时主动权
+    /// </summary>
+    public int tempCharInitiative { get { return charAttribute.finalCharInitiative; } }
+
+    public int PersonalityAddPassiveSkill { get { return charAttribute.PersonalityAddPassiveSkill; } }
+    /// <summary>
+    /// 是否消失
+    /// </summary>
+    public bool IsHidden { get { return charAttribute.stateAttribute.Any(a => a.isHidden); } }
+    /// <summary>
+    /// 初始位置
+    /// </summary>
+    public int initIndex;
+    /// <summary>
+    /// 是否激励
+    /// </summary>
+    public bool isIncentive;
+    #region 角色修正数据
+
+    public int beingHit;
+    /// <summary>
+    /// 最大护盾值
+    /// </summary>
+    public int maxShield;
+    /// <summary>
+    /// 最大护甲值
+    /// </summary>
+    public int maxArmor;
+    /// <summary>
+    /// 护盾
+    /// </summary>
+    public int shield;
+    /// <summary>
+    /// 护甲
+    /// </summary>
+    public int armor;
+    /// <summary>
+    /// 临时护盾_hui'e
+    /// </summary>
+    public int tempShield;
+    /// <summary>
+    /// 临时护甲_用于临时自动恢复
+    /// </summary>
+    public int tempArmor;
+    /// <summary>
+    /// 生命值
+    /// </summary>
+    public int hp;
+    /// <summary>
+    /// 最大生命值
+    /// </summary>
+    public int maxHp;
+    /// <summary>
+    /// 负生命
+    /// </summary>
+    public int negativeHP;
+
+    /// <summary>
+    /// 是否击晕
+    /// </summary>
+    public bool isStunned
+    {
+        get { return States.Find(a => a.SkillEffect == SkillEffect.JiYun) != null; }
+    }
+    /// <summary>
+    /// 是否物伤
+    /// </summary>
+    public bool isWuShang
+    {
+        get { return States.Find(a => a.SkillEffect == SkillEffect.WuShangJianDi) != null; }
+    }
+    /// <summary>
+    /// 是否法伤
+    /// </summary>
+    public bool isFaShang
+    {
+        get { return States.Find(a => a.SkillEffect == SkillEffect.FaShangJianDi) != null; }
+    }
+
+    /// <summary>
+    /// 伤害吸收
+    /// </summary>
+    public float DamageAbsorb
+    {
+        get { return charAttribute.stateAttribute.Sum(a => a.tempDamageAbsorb); }
+        set { SetDamageAbsorbProperty(value); }
+    }
+    /// <summary>
+    /// 临时护盾
+    /// </summary>
+    public float PeriodShield
+    {
+        get { return charAttribute.stateAttribute.Sum(a => a.tempPeriodShield); }
+        set { SetPeriodShieldProperty(value); }
+    }
+    /// <summary>
+    /// 临时护甲
+    /// </summary>
+    public float PeriodArmor
+    {
+        get { return charAttribute.stateAttribute.Sum(a => a.tempPeriodArmor); }
+        set { SetPeriodArmorProperty(value); }
+    }
+
+    public int BeingProtected
+    {
+        get { return charAttribute.stateAttribute.Sum(a => a.beingProtected); }
+        set { SetBeingProtected(value); }
+    }
+    #endregion
+
+    /// <summary>
+    /// 损失生命值
+    /// </summary>
+    public int LoseHp { get { return maxHp - hp; } }
+    /// <summary>
+    /// 当前护盾_界面显示
+    /// </summary>
+    public int CurrentShield { get { return (int)(shield + tempShield + PeriodShield); } }
+    /// <summary>
+    /// 临时护盾
+    /// </summary>
+    public int TempShield { get { return (int)(tempShield + PeriodShield); } }
+
+    /// <summary>
+    /// 当前护甲_界面显示
+    /// </summary>
+    public int CurrentArmor { get { return (int)(armor + tempArmor + PeriodArmor); } }
+    /// <summary>
+    /// 临时护甲
+    /// </summary>
+    public int TempArmor { get { return (int)(tempArmor + PeriodArmor); } }
+    public float TempDamageAbsorb { get { return charAttribute.stateAttribute.Sum(a => a.tempDamageAbsorb); } }
+
+
+    /// <summary>
+    /// 战斗技能
+    /// </summary>
+    public List<CSkillInfo> combatSkills = new List<CSkillInfo>();
+    /// <summary>
+    /// 手动技能
+    /// </summary>
+    public List<CSkillInfo> manualSkills = new List<CSkillInfo>();
+    /// <summary>
+    /// 通用技能
+    /// </summary>
+    public List<CSkillInfo> commonSkills = new List<CSkillInfo>();
+    /// <summary>
+    /// 战斗技能
+    /// </summary>
+    public List<CSkillInfo> combatSkills2 = new List<CSkillInfo>();
+    /// <summary>
+    /// 战斗技能
+    /// </summary>
+    public List<CSkillInfo> combatSkills3 = new List<CSkillInfo>();
+    /// <summary>
+    /// 战斗技能
+    /// </summary>
+    public List<CSkillInfo> combatSkills4 = new List<CSkillInfo>();
+    /// <summary>
+    /// 状态属性
+    /// </summary>
+    public List<StateAttribute> States { get { return charAttribute.stateAttribute; } }
+
+    public List<PersonalityAddEncourage> personalityAddEncourages = new List<PersonalityAddEncourage>();
+
+    /// <summary>
+    /// 战术技能
+    /// </summary>
+    public List<int> tacticalSkillList = new List<int>();
+    /// <summary>
+    /// 被动技能
+    /// </summary>
+    public List<int> passiveSkillList = new List<int>();
+    /// <summary>
+    /// 状态更新
+    /// </summary>
+    public bool IsStateUpdate { get { return isStateUpdate; } }
+    public List<FrequencyState> FrequencyStates { get { return frequencyStates; } }
+
+    public bool IsBoss
+    {
+        get
+        {
+            return isBoss;
+        }
+    }
+
+    public Dictionary<int, Dictionary<int, List<BossSkillInfo>>> AllBossInfo
+    {
+        get
+        {
+            return allBossInfo;
+        }
+    }
+
+    //预选目标列表
+    public List<PreselectedTargetInfo> preselectedTargetInfos = new List<PreselectedTargetInfo>();
+    //
+    public int mobTeam;
+    public bool isMob;
+    /// <summary>
+    /// 治疗标签
+    /// </summary>
+    public int healingTag;
+    /// <summary>
+    /// 治疗标签添加回合
+    /// </summary>
+    public int healingAddRound;
+    public float lastResultValue;
+    public int canResurrect;
+    public float resurrectHP;
+    /// <summary>
+    /// 高威胁
+    /// </summary>
+    public int highThreat;
+
+    /// <summary>
+    /// 构造战斗单元
+    /// </summary>
+    /// <param name="combatUnit"></param>
+    /// <param name="isNew"></param>
+    public CombatUnit(CombatUnit combatUnit, bool isNew = false, int mobTeam = 0)
+    {
+        if (combatUnit == null)
+        {
+            return;
+        }
+
+        this.mobTeam = mobTeam;
+        InitInfo(combatUnit.charAttribute, combatUnit.initIndex, mobTeam);
+        hp = isNew ? (int)combatUnit.charAttribute.finalHP : combatUnit.hp;
+        negativeHP = isNew ? (int)combatUnit.charAttribute.negativeHP : combatUnit.negativeHP;
+        shield = isNew ? (int)combatUnit.charAttribute.finalShield : combatUnit.shield;
+        armor = isNew ? (int)combatUnit.charAttribute.finalArmor : combatUnit.armor;
+        //
+        InitBossSkillInfo();
+    }
+    /// <summary>
+    /// 构造战斗单元
+    /// </summary>
+    public CombatUnit(CharAttribute charAttribute, int index, int mobTeam = 0)
+    {
+        if (charAttribute == null)
+        {
+            return;
+        }
+        this.mobTeam = mobTeam;
+        InitInfo(charAttribute, index, mobTeam);
+        hp = (int)charAttribute.finalHP;
+        negativeHP = (int)charAttribute.negativeHP;
+        maxHp = hp;
+        shield = (int)charAttribute.finalShield;
+        armor = (int)charAttribute.finalArmor;
+        //
+        InitBossSkillInfo();
+    }
+
+    public void AtuoUpdateBossSkillInfo(int nowRound = 1)
+    {
+    }
+
+    /// <summary>
+    /// 角色被动复活
+    /// </summary>
+    public void PassivityResurrect(CREffectResult effectResult)
+    {
+        //todo 被动复活的显示
+        if (hp > 0 || canResurrect != 1 || resurrectHP < 0)
+        {
+            return;
+        }
+        int chance = (int)(Math.Min(1, (resurrectHP + hp) / charAttribute.HPRevive) * 10000);
+        if (RandomBuilder.RandomIndex_Chances(chance) != 0)
+        {
+            return;
+        }
+        resurrectHP = resurrectHP - charAttribute.HPRevive + hp;
+        hp = (int)charAttribute.HPRevive;
+        beingHit--;
+    }
+    /// <summary>
+    /// 角色主动复活
+    /// </summary>
+    public void InitiativeResurrect(float finalValue, CREffectResult effectResult)
+    {
+        //todo 主动复活的显示
+        if (hp > 0)
+        {
+            return;
+        }
+        int chance = (int)(Math.Min(1, hp + finalValue) / charAttribute.HPRevive * 10000);
+        if (RandomBuilder.RandomIndex_Chances(chance) != 0)
+        {
+            return;
+        }
+        hp = (int)charAttribute.HPRevive;
+        effectResult.isRevive = true;
+        effectResult.isHPChange = true;
+        beingHit--;
+    }
+    /// <summary>
+    /// 修正死亡
+    /// </summary>
+    public void AmendDie()
+    {
+        //移除状态
+        while (States.Any(a => a.duration < 99))
+        {
+            States.Remove(States.Find(a => a.duration < 99));
+        }
+    }
+
+    public void AddFrequencyState(State_template template, int nowRound)
+    {
+        FrequencyState temp = frequencyStates.Find(a => a.stateID == template.stateID);
+        if (temp != null)
+        {
+            frequencyStates.Remove(temp);
+        }
+        frequencyStates.Add(new FrequencyState(template, nowRound));
+    }
+    public void ResetPersonalityEffect()
+    {
+        charAttribute.SetFinalEncourage(-100);
+        personalityAddEncourages.Clear();
+    }
+
+    /// <summary>
+    /// 清除角色休息
+    /// </summary>
+    public void ClearCombatRest()
+    {
+        if (hp == 0)
+        {
+            charAttribute.SetCharSate(CharStatus.Die);
+            return;
+        }
+        //
+        charAttribute.ClearCombatRest();
+        if (hp > 0)
+        {
+            hp = maxHp;
+        }
+    }
+    /// <summary>
+    /// 设置角色状态
+    /// </summary>
+    /// <param name="_type"></param>
+    public void SetCharSate(CharStatus _type)
+    {
+        CharSystem.Instance.SetCharSate(charAttribute.charID, _type);
+        charAttribute.SetCharSate(_type);
+    }
+
+    /// <summary>
+    /// 获得自动使用技能Info
+    /// </summary>
+    public CSkillInfo GetAutoUseSkillInfo(int phase, int nowRound)
+    {
+        //死亡 不能行动
+        if (hp <= 0)
+        {
+            return null;
+        }
+
+        //boss重置技能
+        if (isBoss && updateSkillRound != nowRound)
+        {
+            updateSkillRound = nowRound;
+            combatSkills.Clear();
+            combatSkills2.Clear();
+            combatSkills3.Clear();
+            combatSkills4.Clear();
+            //
+            Dictionary<int, List<BossSkillInfo>> temps = allBossInfo[nowRound % bossUpdateRound];
+            foreach (KeyValuePair<int, List<BossSkillInfo>> item in temps)
+            {
+                List<BossSkillInfo> lists = new List<BossSkillInfo>();
+                foreach (BossSkillInfo skillInfo in item.Value)
+                {
+                    lists.Add(skillInfo);
+                }
+                AddBossSkills(item.Key, lists);
+            }
+        }
+        //
+        List<CSkillInfo> skillInfos = new List<CSkillInfo>();
+        switch (phase)
+        {
+            case 1:
+                skillInfos = combatSkills;
+                break;
+            case 2:
+                skillInfos = combatSkills2;
+                break;
+            case 3:
+                skillInfos = combatSkills3;
+                break;
+            case 4:
+                skillInfos = combatSkills4;
+                break;
+        }
+        //从列表中自动选择可用技能 
+        foreach (CSkillInfo item in skillInfos)
+        {
+            if (item.IsUsable(nowRound))
+            {
+                return item;
+            }
+        }
+        //没有选择到技能
+        return null;
+    }
+
+    #region 状态操作
+
+    /// <summary>
+    /// 更新状态
+    /// </summary>
+    public void UpdateSateInfo(bool _isOk)
+    {
+        isStateUpdate = _isOk;
+    }
+
+    /// <summary>
+    /// 添加状态
+    /// </summary>
+    /// <param name="state"></param>
+    public void AddState(StateAttribute state)
+    {
+        StateSystem.AddState(States, state);
+    }
+    /// <summary>
+    /// 移除状态
+    /// </summary>
+    /// <param name="stateType"></param>
+    public int RemoveState(int stateType)
+    {
+        return StateSystem.RemoveState(States, stateType, charAttribute.stateAttribute.Count);
+    }
+
+    /// <summary>
+    /// 移除状态
+    /// </summary>
+    public int RemoveState(StateType stateType, int removeSum)
+    {
+        return StateSystem.RemoveState(States, (int)stateType, removeSum);
+    }
+    /// <summary>
+    /// 移除状态
+    /// </summary>
+    public int RemoveState(int stateType, int removeSum)
+    {
+        return StateSystem.RemoveState(States, stateType, removeSum);
+    }
+
+    /// <summary>
+    /// 移除状态
+    /// </summary>
+    public void RemoveState(StateAttribute state)
+    {
+        StateSystem.RemoveState(States, state);
+    }
+
+    public void RemoveState(List<StateAttribute> states)
+    {
+        StateSystem.RemoveState(States, states);
+    }
+
+    #endregion
+
+    /// <summary>
+    /// 更新最大生命值
+    /// </summary>
+    /// <param name="value"></param>
+    public void UpdateMaxHp(int value)
+    {
+        maxHp += value;
+    }
+
+    public void TestSetShiled(int value)
+    {
+        shield = value;
+    }
+    public void TestSetArmor(int value)
+    {
+        armor = value;
+    }
+
+    /// <summary>
+    /// 初始化信息
+    /// </summary>
+    /// <param name="charAttribute"></param>
+    /// <param name="index"></param>
+    private void InitInfo(CharAttribute charAttribute, int index, int mobTeam = 0)
+    {
+        if (charAttribute == null)
+        {
+            return;
+        }
+        isMob = charAttribute is MobAttribute;
+        this.charAttribute = isMob ? new MobAttribute(mobTeam, charAttribute) : new CharAttribute(charAttribute);
+        //
+        if (isMob)
+        {
+            isBoss = (this.charAttribute as MobAttribute).mob_template.isBoss == 1;
+            Mob_mobteam template = Mob_mobteamConfig.GetMobMobteam(mobTeam);
+            if (template != null)
+            {
+                if (template.mobDelay.Count > index)
+                {
+                    cooldownDelay = template.mobDelay[index];
+                }
+
+            }
+        }
+        //
+        initIndex = index;
+        initialSpeed = index;
+        finalSpeed = index;
+        maxHp = (int)this.charAttribute.finalHP;
+        maxArmor = (int)this.charAttribute.finalArmor;
+        maxShield = (int)this.charAttribute.finalShield;
+        //初始化战术技能
+        foreach (int item in this.charAttribute.TacticalSkills)
+        {
+            tacticalSkillList.Add(item);
+        }
+        //初始化被动技能
+        foreach (int item in this.charAttribute.PassiveSkills)
+        {
+            passiveSkillList.Add(item);
+        }
+        //初始化战斗技能
+        foreach (int item in this.charAttribute.CombatSkills)
+        {
+            combatSkills.Add(new CombatSkillInfo(item, this.charAttribute.skillCDReduction, cooldownDelay));
+        }
+        //初始化手动技能
+        foreach (int item in this.charAttribute.ManualSkills)
+        {
+            manualSkills.Add(new ManualSkillInfo(item, this.charAttribute.skillCDReduction, cooldownDelay));
+        }
+        //初始化通用技能
+        foreach (int item in this.charAttribute.CommonSkills)
+        {
+            commonSkills.Add(new CommonSkillInfo(item, this.charAttribute.skillCDReduction, cooldownDelay));
+        }
+        if (!isMob || isBoss)
+        {
+            return;
+        }
+        //初始化战斗技能2
+        foreach (int item in (this.charAttribute as MobAttribute).skillInfos2)
+        {
+            combatSkills2.Add(new CombatSkillInfo(item, this.charAttribute.skillCDReduction, cooldownDelay));
+        }
+        //初始化战斗技能3
+        foreach (int item in (this.charAttribute as MobAttribute).skillInfos3)
+        {
+            combatSkills3.Add(new CombatSkillInfo(item, this.charAttribute.skillCDReduction, cooldownDelay));
+        }
+        //初始化战斗技能4
+        foreach (int item in (this.charAttribute as MobAttribute).skillInfos4)
+        {
+            combatSkills4.Add(new CombatSkillInfo(item, this.charAttribute.skillCDReduction, cooldownDelay));
+        }
+    }
+
+    /// <summary>
+    /// 设置伤害吸收属性
+    /// </summary>
+    /// <param name="value"></param>
+    private void SetDamageAbsorbProperty(float value)
+    {
+        List<StateAttribute> stateAttributes = charAttribute.stateAttribute.OrderBy(a => a.duration).ToList();
+        List<StateAttribute> temps = new List<StateAttribute>();
+        while (stateAttributes.Any(a => a.tempDamageAbsorb > 0))
+        {
+            foreach (StateAttribute item in stateAttributes)
+            {
+                if (item.tempDamageAbsorb <= 0)
+                {
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.tempDamageAbsorb < value)
+                {
+                    value -= item.tempDamageAbsorb;
+                    item.tempDamageAbsorb = 0;
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.tempDamageAbsorb == value)
+                {
+                    item.tempDamageAbsorb = 0;
+                    temps.Add(item);
+                    break;
+                }
+                item.tempDamageAbsorb -= value;
+                break;
+            }
+        }
+        //卸载为0的状态
+        RemoveState(temps);
+    }
+    /// <summary>
+    /// 设置临时护盾属性
+    /// </summary>
+    /// <param name="value"></param>
+    private void SetPeriodShieldProperty(float value)
+    {
+        List<StateAttribute> stateAttributes = charAttribute.stateAttribute.OrderBy(a => a.duration).ToList();
+        List<StateAttribute> temps = new List<StateAttribute>();
+        while (stateAttributes.Any(a => a.tempPeriodShield > 0))
+        {
+            foreach (StateAttribute item in stateAttributes)
+            {
+                if (item.tempPeriodShield <= 0)
+                {
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.tempPeriodShield < value)
+                {
+                    value -= item.tempPeriodShield;
+                    item.tempPeriodShield = 0;
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.tempPeriodShield == value)
+                {
+                    item.tempPeriodShield = 0;
+                    temps.Add(item);
+                    return;
+                }
+                item.tempPeriodShield -= value;
+                return;
+            }
+        }
+        //卸载为0的状态
+        RemoveState(temps);
+    }
+    /// <summary>
+    /// 设置临时护甲属性
+    /// </summary>
+    /// <param name="value"></param>
+    private void SetPeriodArmorProperty(float value)
+    {
+        List<StateAttribute> stateAttributes = charAttribute.stateAttribute.OrderBy(a => a.duration).ToList();
+        List<StateAttribute> temps = new List<StateAttribute>();
+        while (stateAttributes.Any(a => a.tempPeriodArmor > 0))
+        {
+            foreach (StateAttribute item in stateAttributes)
+            {
+                if (item.tempPeriodArmor <= 0)
+                {
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.tempPeriodArmor < value)
+                {
+                    value -= item.tempPeriodArmor;
+                    item.tempPeriodArmor = 0;
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.tempPeriodArmor == value)
+                {
+                    item.tempPeriodArmor = 0;
+                    temps.Add(item);
+                    return;
+                }
+                item.tempPeriodArmor -= value;
+                return;
+            }
+        }
+        //卸载为0的状态
+        RemoveState(temps);
+    }
+
+    private void SetBeingProtected(int value)
+    {
+        List<StateAttribute> stateAttributes = charAttribute.stateAttribute.OrderBy(a => a.duration).ToList();
+        List<StateAttribute> temps = new List<StateAttribute>();
+        while (stateAttributes.Any(a => a.beingProtected > 0))
+        {
+            foreach (StateAttribute item in stateAttributes)
+            {
+                if (item.beingProtected <= 0)
+                {
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.tempPeriodArmor < value)
+                {
+                    value -= item.beingProtected;
+                    item.tempPeriodArmor = 0;
+                    temps.Add(item);
+                    continue;
+                }
+                if (item.beingProtected == value)
+                {
+                    item.beingProtected = 0;
+                    temps.Add(item);
+                    return;
+                }
+                item.beingProtected -= value;
+                return;
+            }
+        }
+        //卸载为0的状态
+        RemoveState(temps);
+    }
+
+
+    /// <summary>
+    /// 初始化boss技能信息
+    /// </summary>
+    private void InitBossSkillInfo()
+    {
+        if (!isBoss)
+        {
+            return;
+        }
+        Mob_timeline timeline = Mob_timelineConfig.GetTimeline((charAttribute as MobAttribute).mob_template.templateID);
+        if (timeline == null)
+        {
+            return;
+        }
+        List<List<int>> skills = new List<List<int>>();
+        for (int i = 1; i <= bossUpdateRound; i++)
+        {
+            skills.Clear();
+            switch (i)
+            {
+                case 1:
+                    skills = timeline.round1;
+                    break;
+                case 2:
+                    skills = timeline.round2;
+                    break;
+                case 3:
+                    skills = timeline.round3;
+                    break;
+                case 4:
+                    skills = timeline.round4;
+                    break;
+                case 5:
+                    skills = timeline.round5;
+                    break;
+                case 6:
+                    skills = timeline.round6;
+                    break;
+                case 7:
+                    skills = timeline.round7;
+                    break;
+                case 8:
+                    skills = timeline.round8;
+                    break;
+                case 9:
+                    skills = timeline.round9;
+                    break;
+                case 10:
+                    skills = timeline.round10;
+                    break;
+                case 11:
+                    skills = timeline.round11;
+                    break;
+                case 12:
+                    skills = timeline.round12;
+                    break;
+            }
+            //
+            CreatBossInfo(i, skills);
+        }
+    }
+
+    private void CreatBossInfo(int index, List<List<int>> skills)
+    {
+        Dictionary<int, List<BossSkillInfo>> values = new Dictionary<int, List<BossSkillInfo>>();
+        for (int i = 0; i < skills.Count; i++)
+        {
+            List<int> ids = skills[i];
+            List<BossSkillInfo> temps = new List<BossSkillInfo>();
+            foreach (int id in ids)
+            {
+                Bossskill_template template = Bossskill_templateConfig.GeTemplate(id);
+                if (template != null)
+                {
+                    temps.Add(new BossSkillInfo(template, charAttribute.skillCDReduction, cooldownDelay));
+                }
+            }
+            values.Add(i, temps);
+        }
+        //
+        allBossInfo.Add(index, values);
+    }
+
+    private void AddBossSkills(int index, List<BossSkillInfo> lists)
+    {
+        switch (index)
+        {
+            case 0:
+                foreach (BossSkillInfo item in lists)
+                {
+                    combatSkills.Add(item);
+                }
+                break;
+            case 1:
+                foreach (BossSkillInfo item in lists)
+                {
+                    combatSkills2.Add(item);
+                }
+                break;
+            case 2:
+                foreach (BossSkillInfo item in lists)
+                {
+                    combatSkills3.Add(item);
+                }
+                break;
+            case 3:
+                foreach (BossSkillInfo item in lists)
+                {
+                    combatSkills4.Add(item);
+                }
+                break;
+        }
+    }
+
+    //
+    private int cooldownDelay;
+    private int updateSkillRound;
+    private bool isBoss;
+    /// <summary>
+    /// 状态更新
+    /// </summary>
+    private bool isStateUpdate;
+    private readonly List<FrequencyState> frequencyStates = new List<FrequencyState>();
+    private const int bossUpdateRound = 12;
+    /// <summary>
+    /// key=round,value=skillList
+    /// </summary>
+    private Dictionary<int, Dictionary<int, List<BossSkillInfo>>> allBossInfo = new Dictionary<int, Dictionary<int, List<BossSkillInfo>>>();
+}
+
+/// <summary>
+/// 频率状态
+/// </summary>
+public class FrequencyState
+{
+    public int stateID;
+    public int loadFrequency;
+    public int loadRound;
+
+    public FrequencyState(State_template template, int nowRound)
+    {
+        stateID = template.stateID;
+        loadFrequency = template.loadFrequency;
+        loadRound = nowRound;
+    }
+}
+
+public class PreselectedTargetInfo
+{
+    public CSkillInfo skillInfo;
+    public int skillID;
+    //预选目标列表
+    public Dictionary<int, List<CombatUnit>> preselectedTargets = new Dictionary<int, List<CombatUnit>>();
+
+    public PreselectedTargetInfo(CSkillInfo skillInfo, Dictionary<int, List<CombatUnit>> preselectedTargets)
+    {
+        this.skillInfo = skillInfo;
+        skillID = skillInfo.ID;
+        this.preselectedTargets = preselectedTargets;
+    }
+}

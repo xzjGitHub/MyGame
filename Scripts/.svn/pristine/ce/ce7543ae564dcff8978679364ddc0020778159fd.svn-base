@@ -1,0 +1,564 @@
+﻿using MCCombat;
+using System;
+
+/// <summary>
+/// 状态属性
+/// </summary>
+public partial class StateAttribute
+{
+    public StateAttribute()
+    {
+
+    }
+
+
+    /// <summary>
+    /// 新建状态属性
+    /// </summary>
+    /// <param name="skillInfo">来自技能</param>
+    /// <param name="targetsetID">来自目标集合</param>
+    /// <param name="stateID">状态id</param>
+    /// <param name="atkUnit">攻击方</param>
+    /// <param name="targetUnit">受击方</param>
+    public StateAttribute(CSkillInfo skillInfo, int targetsetID, int stateID, CombatUnit atkUnit, CombatUnit targetUnit, int nowRound, CombatTeamInfo targetTeam = null, float returnResultValue = 0, int stunnedIndex = -1)
+    {
+        createRound = nowRound;
+        drainValue = returnResultValue;
+        Init(skillInfo, targetsetID, stateID, atkUnit, targetUnit);
+        this.targetTeam = targetTeam;
+        this.stunnedIndex = stunnedIndex;
+    }
+
+    public UnitStateInfo GetStateInfo()
+    {
+        return new UnitStateInfo(this);
+    }
+
+    /// <summary>
+    /// 添加状态
+    /// </summary>
+    /// <returns></returns>
+    public CREffectResult AddState()
+    {
+        CREffectResult effectResult = new CREffectResult
+        {
+            stateID = stateID,
+            duration = duration,
+            hitTeamId = targetUnit.teamId,
+            hitCharId = targetUnit.charAttribute.charID,
+            hitIndex = targetUnit.initIndex,
+            isShow = false,
+        };
+        return effectResult;
+    }
+
+
+    /// <summary>
+    /// 执行效果
+    /// </summary>
+    public CREffectResult ExecuteEffect()
+    {
+        return EffectOperation();
+    }
+
+    /// <summary>
+    /// 效果操作
+    /// </summary>
+    private CREffectResult EffectOperation()
+    {
+        CREffectResult effectResult = new CREffectResult
+        {
+            stateID = stateID,
+            duration = duration,
+            hitTeamId = targetUnit.teamId,
+            hitCharId = targetUnit.charAttribute.charID,
+            hitIndex = targetUnit.initIndex,
+        };
+        //beingHit 
+        if (skillInfo is BossSkillInfo)
+        {
+            if ((skillInfo as BossSkillInfo).bossSkill.isMarker > 0)
+            {
+                //抵消
+                if (targetUnit.BeingProtected > 0)
+                {
+                    targetUnit.BeingProtected = 1;
+                }
+                else
+                {
+                    targetUnit.beingHit++;
+                }
+            }
+        }
+
+        float value = finalValue;
+        int tempValue = (int)value;
+        int addValue;
+        switch ((SkillEffect)skillEffect)
+        {
+            case SkillEffect.WuShang:
+            case SkillEffect.FaShang:
+            case SkillEffect.ZhenShang:
+                #region 伤害吸收
+                //减去DamageAbsorb
+                if (targetUnit.DamageAbsorb >= value)
+                {
+                    targetUnit.DamageAbsorb = value;
+                    effectResult.damageAbsorb = -value;
+                    effectResult.isShieldDefend = true;
+                    break;
+                }
+                float temp = targetUnit.DamageAbsorb;
+                targetUnit.DamageAbsorb = value;
+                effectResult.damageAbsorb = -temp;
+                value -= temp;
+                #endregion
+
+                #region 临时护盾
+
+                bool isHaveVlaue = targetUnit.CurrentShield > 0;
+                //先减自身临时盾
+                temp = value * finalShieldDB;
+                if (targetUnit.tempShield >= temp)
+                {
+                    targetUnit.tempShield -= (int)temp;
+                    effectResult.periodShield += -temp;
+                    effectResult.isShieldDefend = true;
+                    break;
+                }
+                effectResult.periodShield += -tempShield;
+                targetUnit.tempShield = 0;
+                //减状态临时护盾
+                value -= targetUnit.tempShield / finalShieldDB;
+                temp = value * finalShieldDB;
+                if (targetUnit.PeriodShield >= temp)
+                {
+                    targetUnit.PeriodShield = temp;
+                    effectResult.periodShield += -temp;
+                    effectResult.isShieldDefend = true;
+                    break;
+                }
+                //减去PeriodShield
+                value -= targetUnit.PeriodShield / finalShieldDB;
+                effectResult.periodShield += -targetUnit.PeriodShield;
+                targetUnit.PeriodShield = -temp;
+                #endregion
+
+                #region 护盾
+                //减去护盾
+                temp = value * finalShieldDB;
+                if (targetUnit.shield >= temp)
+                {
+                    targetUnit.shield -= (int)temp;
+                    effectResult.shield += -(int)temp;
+                    effectResult.isShieldDefend = true;
+                    break;
+                }
+                value -= targetUnit.shield / finalShieldDB;
+                effectResult.shield += -targetUnit.shield;
+                targetUnit.shield = 0;
+                if (isHaveVlaue)
+                {
+                    effectResult.isShieldMar = true;
+                }
+                #endregion
+
+                #region 临时护甲
+                isHaveVlaue = targetUnit.CurrentArmor > 0;
+                //先减自身临时甲
+                temp = value * finalArmorDB;
+                if (targetUnit.tempArmor >= temp)
+                {
+                    targetUnit.tempArmor -= (int)temp;
+                    effectResult.periodArmor += -temp;
+                    effectResult.isArmorDefend = true;
+                    break;
+                }
+                effectResult.periodArmor += -tempShield;
+                targetUnit.tempArmor = 0;
+
+                //减去PeriodArmor----先减临时护甲
+                value -= targetUnit.tempArmor / finalArmorDB;
+                temp = value * finalArmorDB;
+                if (targetUnit.PeriodArmor >= temp)
+                {
+                    effectResult.periodArmor += -temp;
+                    targetUnit.PeriodArmor = temp;
+                    effectResult.isArmorDefend = true;
+                    break;
+                }
+                //
+                effectResult.periodArmor += -targetUnit.PeriodArmor;
+                value -= targetUnit.PeriodArmor / finalArmorDB;
+                targetUnit.PeriodArmor = temp;
+                #endregion
+
+                #region 护甲
+                //减去护甲
+                temp = value * finalArmorDB;
+                if (targetUnit.armor >= temp)
+                {
+                    effectResult.armor += -(int)temp;
+                    targetUnit.armor -= (int)temp;
+                    effectResult.isArmorDefend = true;
+                    break;
+                }
+                effectResult.armor += -targetUnit.armor;
+                if (isHaveVlaue)
+                {
+                    effectResult.isArmorMar = true;
+                }
+                targetUnit.armor = 0;
+                value -= targetUnit.armor / finalArmorDB;
+                #endregion
+
+                #region 生命
+                temp = value * finalHPDB;
+                if (targetUnit.hp >= temp)
+                {
+                    effectResult.hp = -(int)temp;
+                    targetUnit.hp -= (int)temp;
+                    effectResult.isHPChange = true;
+                    break;
+                }
+                effectResult.hp = -targetUnit.hp;
+                targetUnit.hp = 0;
+                CheckCharResurrect(effectResult);
+                #endregion
+                break;
+            case SkillEffect.JiaShang:
+                targetUnit.armor = Math.Max(0, targetUnit.armor - (int)value);
+                effectResult.armor = -(int)value;
+                if (targetUnit.armor > 0)
+                {
+                    effectResult.isArmorDefend = true;
+                }
+                else
+                {
+                    effectResult.isArmorMar = true;
+                }
+                break;
+            case SkillEffect.DunShang:
+                targetUnit.shield = Math.Max(0, targetUnit.shield - (int)value);
+                effectResult.shield = -(int)value;
+                if (targetUnit.shield > 0)
+                {
+                    effectResult.isShieldDefend = true;
+                }
+                else
+                {
+                    effectResult.isShieldMar = true;
+                }
+                break;
+            case SkillEffect.XueShang:
+                targetUnit.hp = targetUnit.hp - (int)value;
+                effectResult.hp = -(int)value;
+                effectResult.isHPChange = true;
+                CheckCharResurrect(effectResult);
+                break;
+            case SkillEffect.HuiJia:
+                addValue = (targetUnit.armor + tempValue > targetUnit.maxArmor)
+                   ? targetUnit.armor + tempValue - targetUnit.maxArmor
+                   : tempValue;
+                //
+                targetUnit.tempArmor = tempValue - addValue;
+                targetUnit.armor += addValue;
+                effectResult.armor = addValue;
+                effectResult.periodArmor = targetUnit.tempArmor;
+                break;
+            case SkillEffect.HuiDun:
+                addValue = (targetUnit.shield + tempValue > targetUnit.maxShield)
+                   ? targetUnit.shield + tempValue - targetUnit.maxShield
+                   : tempValue;
+                //
+                targetUnit.tempShield = tempValue - addValue;
+                targetUnit.shield += addValue;
+                effectResult.shield = addValue;
+                effectResult.periodShield = targetUnit.tempShield;
+                break;
+            case SkillEffect.HuiXue:
+                tempValue = (int)value;
+                //优先修正负生命
+                if (targetUnit.negativeHP != 0)
+                {
+                    if (targetUnit.negativeHP >= tempValue)
+                    {
+                        targetUnit.negativeHP -= tempValue;
+                        effectResult.hp = 0;
+                        break;
+                    }
+                    tempValue -= targetUnit.negativeHP;
+                    targetUnit.negativeHP = 0;
+                }
+                targetUnit.hp = Math.Min(targetUnit.maxHp, targetUnit.hp + tempValue);
+                effectResult.hp = Math.Min(targetUnit.maxHp, targetUnit.hp + tempValue);
+                break;
+            case SkillEffect.ZhenShangDun:
+                tempDamageAbsorb = value;
+                effectResult.damageAbsorb = value;
+                break;
+            case SkillEffect.LinShiHuJia:
+                tempPeriodArmor = value;
+                // targetUnit.armor += (int)value;
+                effectResult.periodArmor = (int)value;
+                break;
+            case SkillEffect.LinShiHuDun:
+                tempPeriodShield = value;
+                // targetUnit.shield += (int)value;
+                effectResult.periodShield = (int)value;
+                break;
+            case SkillEffect.LinShiShengMing:
+                tempValue = (int)value;
+                effectResult.hp = (int)value;
+                effectResult.maxHp = (int)value;
+                targetUnit.maxHp += (int)value;
+                targetUnit.hp = Math.Min(targetUnit.maxHp, targetUnit.hp + (int)value);
+                break;
+            case SkillEffect.ShangHaiZengFu:
+                tempDamageBonus = value;
+                break;
+            case SkillEffect.WuShangZengFu:
+                tempPhysicalDB = value;
+                break;
+            case SkillEffect.FuShangZengFu:
+                tempSpellDB = value;
+                break;
+            case SkillEffect.YiShang:
+                tempDamageTaken = value;
+                break;
+            case SkillEffect.WuShangYiShang:
+                tempPhysicalTaken = value;
+                break;
+            case SkillEffect.FaShangYiShang:
+                tempSpellTaken = value;
+                break;
+            case SkillEffect.WuShangJianDi:
+                tempPhysicaReduction = value;
+                break;
+            case SkillEffect.FaShangJianDi:
+                tempSpellReduction = value;
+                break;
+            case SkillEffect.JiYun:
+                isStunned = true;
+                effectResult.isStunned = true;
+                break;
+            case SkillEffect.HuDunFanShang:
+                tempShieldReflect = value;
+                break;
+            case SkillEffect.HuJiaFanShang:
+                tempArmorReflect = value;
+                break;
+            case SkillEffect.FuHuo_BeiDong:
+                targetUnit.canResurrect = 1;
+                targetUnit.resurrectHP = value;
+                targetUnit.beingHit--;
+                break;
+            case SkillEffect.FuHuo_ZhuDong:
+                targetUnit.InitiativeResurrect(value, effectResult);
+                break;
+            case SkillEffect.FuHuo_LinShi:
+                effectResult.isHPChange = true;
+                break;
+            case SkillEffect.ZhaoHuan:
+                break;
+            case SkillEffect.Energy:
+                //todo 操作队伍
+                effectResult.consumeEnergy = targetTeam.ConsumeEnergy(tempValue);
+                break;
+            case SkillEffect.NegativeHP:
+                targetUnit.negativeHP += tempValue;
+                effectResult.negativeHP += tempValue;
+                break;
+            case SkillEffect.SwitchHealingTag:
+                targetTeam.combatHealingTag.SetIndex(targetUnit.initIndex, createRound);
+                break;
+            case SkillEffect.Defended:
+                beingProtected = 1;
+                break;
+            case SkillEffect.IncentiveChar:
+                break;
+            case SkillEffect.IncentiveTeam:
+                break;
+            case SkillEffect.Hidden:
+                isHidden = true;
+                break;
+            case SkillEffect.FuHuo_ZhiDing:
+                if (targetUnit.TemplateID == value)
+                {
+                    targetUnit.hp = (int)targetUnit.charAttribute.finalHP;
+                    targetUnit.maxHp = (int)targetUnit.charAttribute.finalHP;
+                    effectResult.isRevive = true;
+                    effectResult.isHPChange = true;
+                }
+                break;
+        }
+
+        int tempHP = targetUnit.hp;
+        effectResult.currentHp = tempHP;
+        tempHP = targetUnit.maxHp;
+        effectResult.maxHp = tempHP;
+        effectResult.currentShield = targetUnit.CurrentShield;
+        tempHP = targetUnit.maxShield;
+        effectResult.maxShield = tempHP;
+        effectResult.currentArmor = targetUnit.CurrentArmor;
+        tempHP = targetUnit.maxArmor;
+        effectResult.maxArmor = tempHP;
+        effectResult.currentDamageAbsorb = targetUnit.TempDamageAbsorb;
+        effectResult.currentTempArmor = targetUnit.TempArmor;
+        effectResult.currentTempShield = targetUnit.tempShield;
+        //
+        returnResultValue = Math.Abs(effectResult.hp);
+        if (targetUnit.hp <= 0)
+        {
+            targetUnit.AmendDie();
+            effectResult.isDie = true;
+        }
+        return effectResult;
+    }
+
+    /// <summary>
+    /// 检查角色复活
+    /// </summary>
+    private void CheckCharResurrect(CREffectResult effectResult)
+    {
+        targetUnit.PassivityResurrect(effectResult);
+    }
+
+
+    /// <summary>
+    /// 初始化
+    /// </summary>
+    private void Init(CSkillInfo skillInfo, int targetsetID, int id, CombatUnit atkUnit, CombatUnit targetUnit)
+    {
+        combat_config = Combat_configConfig.GetCombat_config();
+        this.targetUnit = targetUnit;
+        State_template stateTemplate = State_templateConfig.GetState_template(id);
+        this.state_template = stateTemplate;
+        stateID = id;
+        this.skillInfo = skillInfo;
+        fromSkillId = this.skillInfo.ID;
+        teamID = atkUnit.teamId;
+        charID = atkUnit.charAttribute.charID;
+        charIndex = atkUnit.initIndex;
+        duration = stateTemplate.duration;
+        skillEffect = stateTemplate.skillEffect;
+        stateType = stateTemplate.stateType;
+        HPPropReq = stateTemplate.HPPropReq;
+        triggerType = stateTemplate.triggerType;
+        canBeDispelled = stateTemplate.canBeDispelled;
+        stackType = stateTemplate.stackType;
+        charAttribute = atkUnit.charAttribute;
+        targetAttribute = targetUnit.charAttribute;
+        targetset_template = Targetset_templateConfig.GetTargetset_template(targetsetID);
+        effect_Template = Effect_templateConfig.GetTemplate(skillEffect);
+        bvFormula = stateTemplate.bvFormula;
+        rndRate = RandomBuilder.RandomNum((1 - combat_config.DMGDev), (1 + combat_config.DMGDev));
+    }
+
+    public StateType StateType
+    {
+        get { return (StateType)stackType; }
+    }
+
+    public SkillEffect SkillEffect
+    {
+        get
+        {
+            return (SkillEffect)skillEffect;
+        }
+    }
+
+    /// <summary>
+    /// 是否消失
+    /// </summary>
+    public bool isHidden;
+    public int beingProtected;
+    /// <summary>
+    /// 返回
+    /// </summary>
+    public float returnResultValue;
+
+    /// <summary>
+    /// 随机浮动
+    /// </summary>
+    public float rndRate;
+    /// <summary>
+    /// 创建回合
+    /// </summary>
+    public int createRound;
+
+    /// <summary>
+    /// 状态的ID
+    /// </summary>
+    public int stateID;
+    /// <summary>
+    /// 状态的持续周期计算参数
+    /// </summary>
+    public int duration;
+    /// <summary>
+    /// 来自的技能
+    /// </summary>
+    public int fromSkillId;
+
+    public CSkillInfo skillInfo;
+    /// <summary>
+    /// 使用者队伍
+    /// </summary>
+    public int teamID;
+    /// <summary>
+    /// 使用角色
+    /// </summary>
+    public int charID;
+    /// <summary>
+    /// 使用角色索引
+    /// </summary>
+    public int charIndex;
+    /// <summary>
+    /// 状态类型
+    /// </summary>
+    public int stateType;
+    /// <summary>
+    /// 共存类型
+    /// </summary>
+    public int stackType;
+    /// <summary>
+    /// 是否击晕
+    /// </summary>
+    public bool isStunned;
+    /// <summary>
+    /// 临时值
+    /// </summary>
+    public float tempValue;
+    /// <summary>
+    /// 剩余临时护盾
+    /// </summary>
+    public float remainTempShield;
+    /// <summary>
+    /// 剩余临时护甲
+    /// </summary>
+    public float remainTempArmor;
+
+    public float HPPropReq;
+
+    public int triggerType;
+
+    public int canBeDispelled;
+
+    /// <summary>
+    /// 技能效果
+    /// </summary>
+    public int skillEffect;
+
+    private int stunnedIndex;
+    /// <summary>
+    /// 受击方
+    /// </summary>
+    private CombatUnit targetUnit;
+    /// <summary>
+    /// 受击队伍
+    /// </summary>
+    private CombatTeamInfo targetTeam;
+
+    private Effect_template effect_Template;
+    private State_template stateTemplate;
+}

@@ -1,0 +1,151 @@
+﻿using System.Collections.Generic;
+using Barrack.Data;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace Barrack.View
+{
+    public class AdminCharPanel: MonoBehaviour
+    {
+        private GameObject m_selectObj;
+        private Transform m_parent;
+
+        private Text m_workChar;
+        private Text m_mana;
+
+        private CharList m_charList;
+        private SelectWorkType m_selectWork;
+
+        private UseCharInfo m_goldInfo;
+        private UseCharInfo m_researchInfo;
+        private UseCharInfo m_enchantInfo;
+
+        private int m_charId;
+
+        private bool m_hasInitComponent;
+
+        private void OnDisable()
+        {
+            Free();
+            ControllerCenter.Instance.BarrackController.CharCanWork -= UpdateManaNotEnoughtInfo;
+        }
+
+        private void InitComponent()
+        {
+            m_parent= transform.Find("Right/CharListParent");
+
+            m_workChar = transform.Find("Left/WorkChar/Num").GetComponent<Text>();
+            m_mana = transform.Find("Left/Mana/Num").GetComponent<Text>();
+
+            m_selectObj = transform.Find("SelectWork").gameObject;
+            m_selectWork = Utility.RequireComponent<SelectWorkType>(m_selectObj);
+            m_selectWork.InitComponent();
+            m_selectObj.SetActive(false);
+
+            m_goldInfo = Utility.RequireComponent<UseCharInfo>(transform.Find("Left/CoinInfo").gameObject);
+            m_goldInfo.InitComponent();
+
+            m_researchInfo = Utility.RequireComponent<UseCharInfo>(transform.Find("Left/ResearchInfo").gameObject);
+            m_researchInfo.InitComponent();
+
+            m_enchantInfo = Utility.RequireComponent<UseCharInfo>(transform.Find("Left/EnchantInfo").gameObject);
+            m_enchantInfo.InitComponent();
+        }
+
+        public void InitInfo()
+        {
+            if(!m_hasInitComponent)
+            {
+                InitComponent();
+                m_hasInitComponent = true;
+            }
+
+            GameObject charListObj = GameObjectPool.Instance.GetObjectByPrefabPath(
+                StringDefine.ObjectPooItemKey.CharList,StringDefine.ObjectPooItemKey.CharList);
+            Utility.SetParent(charListObj,m_parent);
+            m_charList = Utility.RequireComponent<CharList>(charListObj);
+            m_charList.InitComponent();
+
+            InitCharList();
+            UpdateWorkChar();
+            UpdateInfo();
+            ControllerCenter.Instance.BarrackController.CharCanWork += UpdateManaNotEnoughtInfo;
+        }
+
+        private void InitCharList()
+        {
+            m_charList.FreePool();
+            List<CharAttribute> list = ControllerCenter.Instance.BarrackController.GetCharList();
+            m_charList.InitList(list,ClickCharAction,null);
+            for(int i = 0; i < list.Count; i++)
+            {
+                m_charList.UpdateManaNotEnoughShowInfo(list[i].charID,BarrackSystem.Instance.CanWork(list[i].charID));
+            }
+        }
+
+        private void ClickCharAction(CharAttribute attr)
+        {
+            m_charId = attr.charID;
+            m_selectObj.SetActive(true);
+            m_selectWork.InitInfo(attr.Status,attr.charLevel,attr.char_template.HeadIcon,UpdateCharUseInfo);
+        }
+
+        private void UpdateCharUseInfo(CharStatus status)
+        {
+            bool suc = ControllerCenter.Instance.BarrackController.UpdateCharUseInfo(m_charId,status);
+            if(suc)
+            {
+                m_charList.UpdateCharStatusShow(m_charId,status);
+            }
+            m_charId = -1;
+            UpdateInfo();
+        }
+
+        private void UpdateInfo()
+        {
+            UpdateManaCostInfo();
+            UpdateWorkChar();
+            UpdateUseCharInfo();
+        }
+
+        private void UpdateManaCostInfo()
+        {
+            m_mana.text = ControllerCenter.Instance.BarrackController.GetAllManaCost().ToString();
+        }
+
+        private void UpdateWorkChar()
+        {
+            int currentNum = BarrackSystem.Instance.GetCurrentWorkNum();
+            int maxWorkNum = ControllerCenter.Instance.BarrackController.GetMaxWorkChar();
+            m_workChar.text = currentNum + "/" + maxWorkNum;
+        }
+
+        private void UpdateUseCharInfo()
+        {
+            int charNum = BarrackSystem.Instance.GetUserTypeCharCount(CharStatus.GoldProduce);
+            float get = ControllerCenter.Instance.BarrackController.GetGold();
+            m_goldInfo.UpdateInfo(charNum + "人",get + "/日");
+
+            charNum = BarrackSystem.Instance.GetUserTypeCharCount(CharStatus.EquipResearch);
+            get = ControllerCenter.Instance.BarrackController.GetResearchOrEnchantEff(charNum);
+            m_researchInfo.UpdateInfo(charNum + "人",get * 100 + "%");
+
+            charNum = BarrackSystem.Instance.GetUserTypeCharCount(CharStatus.EnchantResearch);
+            get = ControllerCenter.Instance.BarrackController.GetResearchOrEnchantEff(charNum);
+            m_enchantInfo.UpdateInfo(charNum + "人",get * 100 + "%");
+        }
+
+        private void UpdateManaNotEnoughtInfo(int charId,bool isWorking)
+        {
+            m_charList.UpdateManaNotEnoughShowInfo(charId,isWorking);
+        }
+
+        public void Free()
+        {
+            if(m_charList != null)
+                m_charList.FreePool();
+
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.CharList);
+        }
+    }
+}

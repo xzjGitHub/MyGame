@@ -1,0 +1,358 @@
+﻿using System;
+using System.Collections.Generic;
+using GameEventDispose;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UIExploreBigMap : MonoBehaviour
+{
+    public int smoothness = 100;
+
+
+    /// <summary>
+    /// 打开显示
+    /// </summary>
+    public void OpenUI(bool isNeedSelect = false)
+    {
+        if (!isFirst)
+        {
+            GetObj();
+            UpdateWPClick();
+            previousRoomID = ExploreSystem.Instance.NowWaypointId;
+            roomID = ExploreSystem.Instance.NowWaypointId;
+            //LoadMapRes();
+        }
+        //
+        UpdateProgressPoint();
+        //
+        gameObject.SetActive(true);
+        this.isNeedSelect = isNeedSelect;
+    }
+
+    /// <summary>
+    /// 更新进度点
+    /// </summary>
+    /// <param name="wpID">路点id</param>
+    /// <param name="progressIndex">房间的进度为0</param>
+    public void UpdateProgressPoint()
+    {
+        //if (!wpPathObjs.ContainsKey(ExploreSystem.Instance.NowWaypointId)) return;
+        //if (wpPathObjs[ExploreSystem.Instance.NowWaypointId] == null) return;
+        //int sum = wpPathObjs[ExploreSystem.Instance.NowWaypointId].Count;
+        //sum = (int)(sum * ExploreSystem.Instance.VisitProgress) - 1;
+        //if (sum < 0) sum = 0;
+        //markerTrans.localPosition = wpPathObjs[ExploreSystem.Instance.NowWaypointId][sum].transform.localPosition;
+        // 
+        if (ExploreSystem.Instance.NowWPAttribute.wp_template.WPCategory==2)
+        {
+            markerTrans.localPosition = roomButtons[ExploreSystem.Instance.NowWaypointId].transform.localPosition;
+        }
+        else
+        {
+            Vector3 pos0 = roomButtons[previousRoomID].transform.localPosition;
+            Vector3 pos1 = roomButtons[roomID].transform.localPosition;
+            markerTrans.localPosition = pos0 + (pos1 - pos0) * ExploreSystem.Instance.VisitProgress;
+        }
+        UpdateButtonShow();
+        gameObject.SetActive(true);
+    }
+
+    /// <summary>
+    /// 更新按钮显示
+    /// </summary>
+    private void UpdateButtonShow()
+    {
+        List<int> list = ExploreSystem.Instance.CanUseRoomIDs();
+        foreach (KeyValuePair<int, Button> item in roomButtons)
+        {
+            item.Value.interactable = list.Contains(item.Key);
+        }
+    }
+
+    /// <summary>
+    /// 点击了背景
+    /// </summary>
+    private void OnClickButton()
+    {
+        if (isNeedSelect)
+        {
+            return;
+        }
+
+        gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// 点击路点
+    /// </summary>
+    /// <param name="WPId"></param>
+    private void OnClickWP(int WPId)
+    {
+        if (!ExploreSystem.Instance.SelectWP(WPId))
+        {
+            return;
+        }
+        previousRoomID = roomID;
+        roomID = WPId;
+        //路点开始
+        EventDispatcher.Instance.ExploreEvent.DispatchEvent(EventId.ExploreEvent, ExploreEventType.WPSelect, (object)WPId);
+        gameObject.SetActive(false);
+        isNeedSelect = false;
+    }
+
+    private void UpdateWPClick()
+    {
+        foreach (Transform item in roomTrans)
+        {
+            int wpID = int.Parse(item.name);
+
+            roomButtons.Add(wpID, item.GetComponent<Button>());
+
+            roomButtons[wpID].onClick.AddListener(delegate { OnClickWP(wpID); });
+        }
+    }
+
+    /// <summary>
+    /// 加载地图资源
+    /// </summary>
+    private void LoadMapRes()
+    {
+        //以前的
+        //wpPathObjs.Clear();
+        //pathWidth = pathBg.GetComponent<RectTransform>().sizeDelta.x;
+        ////新建路点路径列表
+        //foreach (WPAttribute item in ExploreSystem.Instance.WpAttributes)
+        //{
+        //    // 新建路点路径列表
+        //    wpPathObjs.Add(item.waypointId, new List<GameObject>());
+        //    //加载房间的资源   
+        //    if (item.wp_template.WPCategory == 2)
+        //    {
+        //        GameObject obj = ResourceLoadUtil.InstantiateRes(roomBg, roomTrans);
+        //        obj.transform.localPosition = GetShowPos(item.wp_template.position, showSize, grid, gridWidth);
+        //        obj.name = item.waypointId.ToString();
+        //        Button temp = obj.GetComponent<Button>();
+        //        int id = item.waypointId;
+        //        if (temp == null)
+        //        {
+        //            temp = obj.AddComponent<Button>();
+        //        }
+
+        //        temp.onClick.AddListener(delegate { OnClickWP(id); });
+        //        //添加到列表
+        //        wpPathObjs[item.waypointId].Add(obj);
+        //        continue;
+        //    }
+        //    //加载路径的资源 路劲只有一个后续点（房间有可能有多个后续点）
+        //    int index = ExploreSystem.Instance.WpAttributes.Find(a => a.waypointId == item.previousWP).wp_template.position;
+        //    Vector3 startPos = GetShowPos(index, showSize, grid, gridWidth);
+        //    index = ExploreSystem.Instance.WpAttributes.Find(a => a.waypointId == item.nextWP[0]).wp_template.position;
+        //    Vector3 endPos = GetShowPos(index, showSize, grid, gridWidth);
+        //    List<PathVectorInfo> pathVectors = CreatePath(startPos, endPos, pathWidth, smoothness);
+        //    //开始加载资源
+        //    foreach (PathVectorInfo posInfo in pathVectors)
+        //    {
+        //        GameObject obj = ResourceLoadUtil.InstantiateRes(pathBg, pathTrans);
+        //        obj.transform.localPosition = posInfo.pos;
+        //        obj.transform.eulerAngles = posInfo.angle;
+        //        //添加到列表
+        //        wpPathObjs[item.waypointId].Add(obj);
+        //    }
+        //}
+    }
+
+    /// <summary>
+    /// 创建路径
+    /// </summary>
+    /// <param name="startPos">起点</param>
+    /// <param name="endPos">结束点</param>
+    /// <param name="resWidth">资源宽度</param>
+    /// <param name="smoothness">光滑度</param>
+    /// <returns>当前起点和结束点之前的路径</returns>
+    private List<PathVectorInfo> CreatePath(Vector3 startPos, Vector3 endPos, float resWidth, int smoothness)
+    {
+        List<Vector3> tempPos = new List<Vector3>();
+        int sum = 2;
+        float x = endPos.x - startPos.x;
+        float y = endPos.y - startPos.y;
+        float max = 45;
+        float min = 10;
+        //第一种 起点在结束点的左边
+        if (startPos.x < endPos.x)
+        {
+            ////起点在结束点的下方
+            //if (startPos.y <= endPos.y)
+            //{           
+            x = startPos.x + x / (sum == 1 ? 2f : 3);
+            y = RandomBuilder.RandomNum(max, min);
+            tempPos.Add(new Vector3(x, startPos.y - y, 0));
+            if (sum == 2)
+            {
+                x = startPos.x + x / 3f * 2f;
+                y = RandomBuilder.RandomNum(max, min);
+                tempPos.Add(new Vector3(startPos.x + x / 3f * 2f, endPos.y + y, 0));
+            }
+        }
+        else
+        {
+            x = startPos.x - x / (sum == 1 ? 2f : 3);
+            y = RandomBuilder.RandomNum(max, min);
+            tempPos.Add(new Vector3(x, startPos.y - y, 0));
+            if (sum == 2)
+            {
+                x = startPos.x - x / 3f * 2;
+                y = RandomBuilder.RandomNum(max, min);
+                tempPos.Add(new Vector3(x, endPos.y + y, 0));
+            }
+        }
+        //
+        List<Vector3> nowPos = new List<Vector3> { startPos };
+        nowPos.AddRange(tempPos);
+        nowPos.Add(endPos);
+        //先得到当前显示所有的点
+        nowPos = GetVector3s(nowPos, smoothness);
+        //  CalculatePath(nowPos.ToArray(), smoothness);
+        return CreatePath(nowPos, resWidth);
+    }
+    /// <summary>
+    /// 得到显示位置
+    /// </summary>
+    /// <param name="index">索引</param>
+    /// <param name="showSize">显示的区域大小：长*高</param>
+    /// <param name="grid">格子排列：列*行</param>
+    /// <param name="gridWidth">格子宽度</param>
+    /// <returns></returns> 
+    private Vector3 GetShowPos(int index, float[] showSize, int[] grid, float gridWidth)
+    {
+        Vector3 startPos = new Vector3(-(showSize[0] - gridWidth) / 2, (showSize[1] - gridWidth) / 2, 0);
+        int nowIndex = index - 1;
+        //行
+        int row = nowIndex / grid[0];
+        //列
+        int column = nowIndex % grid[0];
+        return startPos + Vector3.down * gridWidth * row + Vector3.right * gridWidth * column;
+    }
+
+    private List<Vector3> GetVector3s(List<Vector3> pos, int sum)
+    {
+        List<Vector3> point = new List<Vector3>();
+        for (int i = 0; i < sum; i++)
+        {
+            point.Add(GetLerpVector(pos, i)[0]);
+        }
+        return point;
+    }
+
+    private List<Vector3> GetLerpVector(List<Vector3> pos, int index)
+    {
+        List<Vector3> posVetors = new List<Vector3>();
+        for (int i = 1; i < pos.Count; i++)
+        {
+            posVetors.Add(Vector3.Lerp(pos[i - 1], pos[i], index / (float)smoothness));
+        }
+        return posVetors.Count == 1 ? posVetors : GetLerpVector(posVetors, index);
+    }
+
+    /// <summary>
+    /// 创建路径
+    /// </summary>
+    private List<PathVectorInfo> CreatePath(List<Vector3> pos, float resWidth)
+    {
+        List<PathVectorInfo> savePos = new List<PathVectorInfo>();
+        //
+        Vector3 _temp = pos[0];
+        float width, height;
+        for (int i = 1; i < pos.Count; i++)
+        {
+            width = Math.Abs(pos[i].x - _temp.x);
+            height = Math.Abs(pos[i].y - _temp.y);
+            //是否相等
+            if (Math.Pow(width, 2) + Math.Pow(height, 2) < Math.Pow(resWidth, 2))
+            {
+                continue;
+            }
+
+            savePos.Add(new PathVectorInfo((_temp + pos[i]) / 2, new Vector3(0, 0, Angle_360(_temp, pos[i]))));
+            _temp = pos[i];
+        }
+        return savePos;
+    }
+    /// <summary>
+    /// 角度
+    /// </summary>
+    private float Angle_360(Vector3 from, Vector3 to)
+    {
+        //两点的x、y值
+        float x = from.x - to.x;
+        float y = from.y - to.y;
+        //斜边长度
+        float hypotenuse = Mathf.Sqrt(Mathf.Pow(x, 2f) + Mathf.Pow(y, 2f));
+        //求出弧度
+        float cos = x / hypotenuse;
+        float radian = Mathf.Acos(cos);
+        //用弧度算出角度    
+        float angle = 180 / (Mathf.PI / radian);
+        if (y < 0)
+        {
+            angle = -angle;
+        }
+        else if ((y == 0) && (x < 0))
+        {
+            angle = 180;
+        }
+        return angle;
+    }
+
+    private void GetObj()
+    {
+        if (isFirst)
+        {
+            return;
+        }
+
+        button = transform.GetComponent<Button>();
+        roomBg = transform.Find("Temp/Room").gameObject;
+        pathBg = transform.Find("Temp/Path").gameObject;
+        pathTrans = transform.Find("Path");
+        roomTrans = transform.Find("Room");
+        markerTrans = transform.Find("Marker/Marker");
+        //
+        button.onClick.AddListener(OnClickButton);
+        //
+        isFirst = true;
+    }
+
+    //
+    private Button button;
+    private GameObject roomBg;
+    private GameObject pathBg;
+    private Transform pathTrans;
+    private Transform roomTrans;
+    private Transform markerTrans;
+    //
+    private readonly float[] showSize = new float[] { 880f, 480 };
+    private readonly int[] grid = new int[] { 11, 6 };
+    private readonly float gridWidth = 80f;
+    private readonly Dictionary<int, List<GameObject>> wpPathObjs = new Dictionary<int, List<GameObject>>();
+    private Dictionary<int, Button> roomButtons = new Dictionary<int, Button>();
+    private readonly float pathWidth;
+    private bool isFirst;
+    private bool isNeedSelect;
+    private int roomID;
+    private int previousRoomID;
+
+    /// <summary>
+    /// 路径位置信息
+    /// </summary>
+    public class PathVectorInfo
+    {
+        public Vector3 pos;
+        public Vector3 angle;
+
+        public PathVectorInfo(Vector3 pos, Vector3 angle)
+        {
+            this.pos = pos;
+            this.angle = angle;
+        }
+    }
+}

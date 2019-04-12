@@ -1,0 +1,97 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using Shop.Data;
+using UnityEngine;
+
+
+namespace Shop.View
+{
+    public class ShopList: MonoBehaviour
+    {
+        private GameObject m_current;
+        private GameObject m_prefab;
+        private Transform m_parent;
+
+        private Dictionary<string,ShopItem> m_dict = new Dictionary<string,ShopItem>();
+
+        private Action<ShopItemInfo> m_clickAction;
+
+        private CoroutineUtil m_coroutine;
+
+        private void OnDisable()
+        {
+            StopCortine();
+        }
+
+        private void StopCortine()
+        {
+            if(m_coroutine != null)
+            {
+                if(m_coroutine.Running)
+                {
+                    m_coroutine.Stop();
+                }
+            }
+        }
+
+
+        public void InitComponent()
+        {
+            m_parent = transform.Find("Grid");
+            m_prefab = transform.Find("Grid/ShopItem").gameObject;
+            m_prefab.SetActive(false);
+        }
+
+        public void InitInfo(List<ShopItemInfo> list,Action<ShopItemInfo> action)
+        {
+            m_clickAction = action;
+            m_dict.Clear();
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.ShopItem);
+
+            StopCortine();
+            m_coroutine = new CoroutineUtil(InitListInfo(list));
+        }
+
+        public IEnumerator InitListInfo(List<ShopItemInfo> list)
+        {
+            for(int i = 0; i < list.Count; i++)
+            {
+                if(list[i].AllCount == 0)
+                    continue;
+
+                GameObject temp = GameObjectPool.Instance.GetObject(
+                    StringDefine.ObjectPooItemKey.ShopItem,m_prefab);
+                Utility.SetParent(temp,m_parent);
+
+                ShopItem shopItem = Utility.RequireComponent<ShopItem>(temp);
+                shopItem.InitInfo(list[i],ClickShopItem);
+
+                m_dict[list[i].OrderNum] = shopItem;
+
+                if (i > 4)
+                    yield return null;
+            }
+        }
+
+
+        private void ClickShopItem(ShopItemInfo info,GameObject obj)
+        {
+            if(m_clickAction != null)
+            {
+                m_clickAction(info);
+            }
+            if (m_current != null)
+            {
+                m_current.SetActive(false);
+            }
+            m_current = obj;
+            m_current.SetActive(true);
+        }
+
+        public void UpdateRemainInfo(string orderNum,int remainNum)
+        {
+            m_dict[orderNum].UpdateRemainNum(remainNum);
+        }
+    }
+}

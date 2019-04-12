@@ -1,0 +1,135 @@
+﻿
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// 背景音乐类型
+/// </summary>
+public enum MusicClipType
+{
+    None,
+    /// <summary>
+    /// 一般
+    /// </summary>
+    NormalBgm,
+    /// <summary>
+    /// 战斗时候
+    /// </summary>
+    BattleBgm
+}
+
+/// <summary>
+/// 音效类型
+/// </summary>
+public enum SoundClicpType
+{
+    None,
+    Test
+}
+
+public class AudioManager: Singleton<AudioManager>
+{
+    private AudioSource m_musicSource;
+    private AudioSource m_soundSource;
+
+    private Dictionary<MusicClipType, AudioClip> m_musicDict = new Dictionary<MusicClipType, AudioClip>();
+    private Dictionary<SoundClicpType, AudioClip> m_soundDict = new Dictionary<SoundClicpType, AudioClip>();
+
+    private AudioManager()
+    {
+        Init();
+    }
+
+    /// <summary>
+    /// 初始化
+    /// </summary>
+    public void Init()
+    {
+        GameObject Audio = new GameObject("[AudioSource]");
+
+        Audio.transform.parent = Game.Instance.gameObject.transform;
+
+        GameObject musicSource = new GameObject("[MusicSource]");
+        musicSource.transform.parent = Audio.transform;
+        m_musicSource = musicSource.AddComponent<AudioSource>();
+        m_musicSource.playOnAwake = false;
+
+        GameObject soundSource = new GameObject("[SoundSource]");
+        soundSource.transform.parent = Audio.transform;
+        m_soundSource = soundSource.AddComponent<AudioSource>();
+        m_soundSource.playOnAwake = false;
+    }
+    
+    /// <summary>
+    /// 播放背景音乐
+    /// </summary>
+    /// <param name="audioClipType">音乐类型</param>
+    /// <param name="isLoop">是否循环</param>
+    public void PlayMusic(MusicClipType audioClipType,bool isLoop=false)
+    {
+        AudioClip audioClip = null;
+        if (m_musicDict.ContainsKey(audioClipType))
+        {
+            audioClip = m_musicDict[audioClipType];
+        }
+        else
+        {
+            string audioName = AudioUitil.GetMusicNameByType(audioClipType);
+            audioClip = ResourceLoadUtil.LoadAudioClip(audioName);
+            m_musicDict[audioClipType] = audioClip;
+        }
+        if (m_musicSource.isPlaying)
+        {
+            m_musicSource.Stop();
+        }
+        m_musicSource.loop = isLoop;
+        m_musicSource.clip = audioClip;
+        m_musicSource.Play();
+    }
+
+    /// <summary>
+    /// 播放音效
+    /// </summary>
+    /// <param name="soundClicpType">音效类型</param>
+    /// <param name="isLoop">是否循环</param>
+    public void PlaySound(SoundClicpType soundClicpType,bool isLoop=false)
+    {
+        AudioClip audioClip = null;
+        if (m_soundDict.ContainsKey(soundClicpType))
+        {
+            audioClip = m_soundDict[soundClicpType];
+        }
+        else
+        {
+            string audioName = AudioUitil.GetSoundNameByType(soundClicpType);
+            audioClip = ResourceLoadUtil.LoadAudioClip(audioName);
+            m_soundDict[soundClicpType] = audioClip;
+        }
+        if (m_soundSource.isPlaying)
+        {
+            m_soundSource.Stop();
+        }
+        m_soundSource.loop = isLoop;
+        m_soundSource.clip = audioClip;
+        m_soundSource.Play();
+    }
+
+    /// <summary>
+    /// 设置背景音乐声音大小
+    /// </summary>
+    /// <param name="volume"></param>
+    public void SetMusicVolume(float volume)
+    {
+        m_musicSource.volume = volume;
+    }
+
+    /// <summary>
+    /// 设置音效声音大小
+    /// </summary>
+    /// <param name="volume"></param>
+    public void SetSoundVolume(float volume)
+    {
+        m_soundSource.volume = volume;
+    }
+}
+

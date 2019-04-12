@@ -1,0 +1,48 @@
+﻿using System.Collections.Generic;
+using UnityEngine;
+using WorkShop.EquipResearch.Controller;
+
+namespace WorkShop.EquipResearch.View
+{
+    public class ViewInfo: MonoBehaviour
+    {
+
+        private List<ViewItem> m_list = new List<ViewItem>();
+
+
+        public void InitComponent()
+        {
+            Utility.AddButtonListener(transform.Find("Mask"),()=>gameObject.SetActive(false));
+        }
+
+        public void UpdateInfo()
+        {
+            if (m_list.Count == 0)
+            {
+                InitList();
+            }
+            for (int i = 0; i < m_list.Count; i++)
+            {
+                m_list[i].UpdateInfo(i+1);
+            }
+        }
+
+        private void InitList()
+        {
+            GameObject prefab = transform.Find("Parent/Grid/Item").gameObject;
+            prefab.SetActive(false);
+            Transform parent = transform.Find("Parent/Grid");
+            for (int i = 0; i < 4; i++)
+            {
+                GameObject obj = GameObject.Instantiate(prefab);
+                Utility.SetParent(obj, parent);
+                ViewItem view = Utility.RequireComponent<ViewItem>(obj);
+                view.InitComponent(EquipResearchController.GetName(i+1));
+                m_list.Add(view);
+            }
+        }
+
+
+
+    }
+}

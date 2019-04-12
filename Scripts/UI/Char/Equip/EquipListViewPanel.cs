@@ -1,0 +1,108 @@
+﻿using System;
+using System.Collections.Generic;
+using Comomon.EquipList;
+using UnityEngine;
+
+public enum EquipPanelType
+{
+    All,
+    Wuqi,
+    Hujia,
+    SiPin,
+    None = 100
+}
+
+namespace Char.View
+{
+    public class EquipListViewPanel: MonoBehaviour
+    {
+        private TogGroup m_tog;
+        [HideInInspector]
+        public EquipList m_equipList;
+
+        [HideInInspector]
+        public EquipPanelType m_currenType = EquipPanelType.None;
+
+        private Action<ItemAttribute> m_action;
+
+        public CharAttribute m_charAttr;
+        private Action m_showEndCallBack;
+
+        public void InitComponent(Action<ItemAttribute> action,Action showEndCallBack=null)
+        {
+            m_action = action;
+            m_showEndCallBack = showEndCallBack;
+            m_equipList = Utility.RequireComponent<EquipList>(transform.Find("ListParent/EquipList").gameObject);
+            m_equipList.InitComponent();
+
+            m_tog = transform.Find("Tag").GetComponent<TogGroup>();
+            m_tog.Init(ClickTog,-1);
+        }
+
+        public void InitComponent1(Action<ItemAttribute> action)
+        {
+            m_action = action;
+            m_equipList = Utility.RequireComponent<EquipList>(transform.Find("ListParent/EquipList").gameObject);
+            m_equipList.InitComponent();
+
+            m_tog = transform.Find("Tag").GetComponent<TogGroup>();
+            m_tog.Init(ClickTog,-1);
+        }
+
+        public void ClickTag(int index)
+        {
+            m_tog.ClickTog(index);
+        }
+
+        private void ClickTog(int index)
+        {
+            if(m_currenType == (EquipPanelType)index)
+            {
+                return;
+            }
+            m_currenType = (EquipPanelType)index;
+            List<ItemAttribute> list = new List<ItemAttribute>();
+            switch(m_currenType)
+            {
+                case EquipPanelType.All:
+                    list = ItemSystem.Instance.GetAllEquip(m_charAttr);
+                    break;
+                case EquipPanelType.Wuqi:
+                    list = ItemSystem.Instance.GetWuQiList(m_charAttr);
+                    break;
+                case EquipPanelType.Hujia:
+                    list = ItemSystem.Instance.GetHuJiaList(m_charAttr);
+                    break;
+                case EquipPanelType.SiPin:
+                    list = ItemSystem.Instance.GetSiPinList(m_charAttr);
+                    break;
+            }
+            m_equipList.InitEquipList(list,ClickEquip,m_showEndCallBack);
+        }
+
+        private void ClickEquip(ItemAttribute attr)
+        {
+            if(m_action != null)
+            {
+                m_action(attr);
+            }
+        }
+
+        public void UpdateSelectShow(int equipId,bool show)
+        {
+            m_equipList.UpdateSelectShow(equipId,show);
+        }
+
+        public void UpdateCharAttr(CharAttribute attr)
+        {
+            m_charAttr = attr;
+        }
+
+        public void Free()
+        {
+            m_currenType = EquipPanelType.None;
+            m_equipList.FreePool();
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.EquipList);
+        }
+    }
+}

@@ -1,0 +1,338 @@
+﻿using GameEventDispose;
+using MCCombat;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+/// <summary>
+/// 播放技能结果效果组件
+/// </summary>
+public class PlaySkillResultEffectsObj
+{
+    public delegate void Callback(object param);
+    public Callback OnStartPlay;
+    public Callback OnEndPlay;
+
+    public bool IsPlayEnd { get { return isPlayEnd; } }
+
+    /// <summary>
+    /// 新建组件
+    /// </summary>
+    /// <param name="skillEffectInfo">技能效果信息</param>
+    /// <param name="actionOperation">角色动作操作</param>
+    /// <param name="carrier">挂载的物体</param>
+    /// <param name="OnStartPlay">开始播放托管</param>
+    public PlaySkillResultEffectsObj(CombatEffect.SkillEffectInfo skillEffectInfo, UICharActionOperation actionOperation, Transform carrier, Callback OnStartPlay)
+    {
+        this.OnStartPlay = OnStartPlay;
+        isPlayEnd = false;
+        this.actionOperation = actionOperation;
+        //
+        int sortingOrder = skillEffectInfo.sortingOrder == 0
+            ? actionOperation.SortingOrder + 6
+            : skillEffectInfo.sortingOrder;
+
+        new CoroutineUtil(IEPlaySkillResultInfo(skillEffectInfo.skillEffectResults, carrier, sortingOrder));
+    }
+
+
+
+    private IEnumerator IEPlaySkillResultInfo(List<CRSkillEffectResult> skillEffectResults, Transform carrier, int sortingOrder)
+    {
+        playEffects.Clear();
+        if (skillEffectResults == null || skillEffectResults.Count == 0)
+        {
+            isPlayEnd = true;
+            yield break;
+        }
+        foreach (CRSkillEffectResult item in skillEffectResults)
+        {
+            UIPlayEffect playEffect;
+            switch (item.CrSkillEffectResultType)
+            {
+                case CRSkillEffectResultType.AddState:
+                    playEffect = PlayResultTypeEffect(item.execState, carrier, sortingOrder);
+                    if (playEffect != null)
+                    {
+                        playEffects.Add(playEffect);
+                    }
+
+                    playEffect = PlayStateEffect(item.execState, carrier, sortingOrder);
+                    if (playEffect != null)
+                    {
+                        playEffects.Add(playEffect);
+                    }
+
+                    yield return new WaitForSeconds(WaitForSeconds);
+                    break;
+                case CRSkillEffectResultType.ExecEffect:
+                    playEffect = PlayResultTypeEffect(item.execState, carrier, sortingOrder);
+                    if (playEffect != null)
+                    {
+                        playEffects.Add(playEffect);
+                    }
+
+                    playEffect = PlayStateEffect(item.execState, carrier, sortingOrder);
+                    if (playEffect != null)
+                    {
+                        playEffects.Add(playEffect);
+                    }
+
+                    yield return new WaitForSeconds(WaitForSeconds);
+                    break;
+                case CRSkillEffectResultType.RemoveState:
+                    //直接移除该角色上的指定状态特效
+                    break;
+                case CRSkillEffectResultType.Miss:
+                    break;
+            }
+        }
+        new CoroutineUtil(IECheckPlayResult());
+    }
+
+    /// <summary>
+    /// 播放技能结果效果
+    /// </summary>
+    private UIPlayEffect PlayResultTypeEffect(CRExecState execState, Transform carrier, int sortingOrder, bool isImpulseEffect = false)
+    {
+        State_template stateTemplate = State_templateConfig.GetState_template(execState.stateID);
+        //
+        resultEffect = ResultEffectConfigConfig.GetResultEffectConfig(stateTemplate.resultType);
+        if (resultEffect == null)
+        {
+            return null;
+        }
+
+        UIPlayEffect playEffect = null;
+        int _commonEffectID = 0;
+        string actionName = GetResultActionId(execState.stateInfo.hitResult, resultEffect);
+        if (OnStartPlay != null)
+        {
+            OnStartPlay(execState);
+            OnStartPlay = null;
+        }
+        switch ((SkillEffect)execState.stateAttribute.skillEffect)
+        {
+            case SkillEffect.WuShang:
+            case SkillEffect.FaShang:
+            case SkillEffect.ZhenShang:
+            case SkillEffect.JiaShang:
+            case SkillEffect.DunShang:
+            case SkillEffect.XueShang:
+            case SkillEffect.HuiJia:
+            case SkillEffect.HuiDun:
+            case SkillEffect.HuiXue:
+            case SkillEffect.ZhenShangDun:
+                EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.Action, new UICharInfo(execState.effectResult),
+                  (object)new object[] { actionName, true });
+                _commonEffectID = GetResultEffectId(execState.stateInfo.hitResult, resultEffect);
+                GetCommonPlayEffectObj(_commonEffectID, carrier, sortingOrder, out playEffect);
+                break;
+            case SkillEffect.JiYun:
+                break;
+            case SkillEffect.HuDunFanShang:
+                break;
+            case SkillEffect.HuJiaFanShang:
+                break;
+            case SkillEffect.FuHuo_BeiDong:
+                break;
+            case SkillEffect.FuHuo_ZhuDong:
+                break;
+            case SkillEffect.FuHuo_LinShi:
+                break;
+            case SkillEffect.ZhaoHuan:
+                break;
+        }
+
+        LogHelperLSK.Log("战斗测试取消CRStateEffectType显示机制");
+        #region 测试
+        //switch (execState.effectResult.CrStateEffectType)
+        //{
+        //    case CRStateEffectType.Shield:
+        //        //检查是否完全吸收
+        //        int _stateID = execState.effectResult.stateID;
+        //        State_template state_Template = State_templateConfig.GetState_template(_stateID);
+        //        if (state_Template != null)
+        //        {
+        //            resultEffect = ResultEffectConfigConfig.GetResultEffectConfig(state_Template.resultType);
+        //            if (resultEffect != null)
+        //            {
+        //                _commonEffectID = resultEffect.effect_onHit;
+        //            }
+        //        }
+        //        EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.Action, new UICharInfo(execState.effectResult)
+        //            , (object)new object[] { actionName, true });
+        //        GetCommonPlayEffectObj(_commonEffectID, carrier, sortingOrder, out playEffect);
+        //        break;
+        //    case CRStateEffectType.HP:
+        //    case CRStateEffectType.AddState:
+        //    case CRStateEffectType.RemoveState:
+        //    case CRStateEffectType.All:
+        //        EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.Action, new UICharInfo(execState.effectResult),
+        //            (object)new object[] { actionName, true });
+        //        _commonEffectID = GetResultEffectId(execState.effectResult.stateInfo.hitResult, resultEffect);
+        //        GetCommonPlayEffectObj(_commonEffectID, carrier, sortingOrder, out playEffect);
+        //        break;
+        //    case CRStateEffectType.Absorb:
+        //        EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.Action, new UICharInfo(execState.effectResult),
+        //            (object)new object[] { resultEffect.action_onAbsorb, true });
+        //        //检查是否完全吸收
+        //        State_template state_Template1 = State_templateConfig.GetState_template(execState.effectResult.stateID);
+        //        if (state_Template1 != null)
+        //        {
+        //            resultEffect = ResultEffectConfigConfig.GetResultEffectConfig(state_Template1.resultType);
+        //            if (resultEffect != null)
+        //            {
+        //                _commonEffectID = resultEffect.effect_onHit;
+        //            }
+        //        }
+        //        GetCommonPlayEffectObj(_commonEffectID, carrier, sortingOrder, out playEffect);
+        //        break;
+        //}
+
+
+        #endregion
+
+        if (CombatSystem.Instance.isTestSkill)
+        {
+            LogHelperLSK.Log("播放CommonPlayEffect"+ playEffect.effectName);
+        }
+        return playEffect;
+    }
+
+    /// <summary>
+    /// 播放状态效果
+    /// </summary>
+    /// <returns></returns>
+    private UIPlayEffect PlayStateEffect(CRExecState _execState, Transform carrier, int sortingOrder, bool _isImpulseEffect = false)
+    {
+        State_template _stateTemplate = State_templateConfig.GetState_template(_execState.stateID);
+        //
+        stateEffect = StateEffectConfigConfig.GetStateEffectConfig(_stateTemplate.stateEffect);
+        if (OnStartPlay != null)
+        {
+            OnStartPlay(_execState);
+        }
+
+        OnStartPlay = null;
+        //
+        if (stateEffect == null)
+        {
+            return null;
+        }
+        //
+        EffectInfo _msg = new EffectInfo(stateEffect.stateEffect, stateEffect.stateEffect, carrier, sortingOrder)
+        { isLoop = true, };
+
+        return PlayEffectTool.PlayEffect(_msg);
+    }
+
+
+    /// <summary>
+    /// 获得CommonEffeect播放组件
+    /// </summary>
+    /// <param name="commonEffectID"></param>
+    /// <param name="carrier"></param>
+    /// <param name="playEffect"></param>
+    private void GetCommonPlayEffectObj(int commonEffectID, Transform carrier, int sortingOrder, out UIPlayEffect playEffect)
+    {
+        playEffect = null;
+        CommonEffectConfig effectConfig = CommonEffectConfigConfig.GetCommonEffectConfig(commonEffectID);
+        if (effectConfig == null)
+        {
+            return;
+        }
+
+        string _RP = effectConfig.commonEffect;
+        EffectInfo _msg = new EffectInfo(_RP, _RP, carrier, sortingOrder) { isLoop = false };
+        playEffect = carrier.gameObject.AddComponent<UIPlayEffect>();
+        playEffect.PlayCommonEffect(_msg, effectConfig, actionOperation);
+    }
+
+
+    /// <summary>
+    /// 检查播放结果
+    /// </summary>
+    /// <returns></returns>
+    private IEnumerator IECheckPlayResult()
+    {
+        while (playEffects.Any(a => !a.IsPlayEnd))
+        {
+            yield return null;
+        }
+
+        isPlayEnd = true;
+        //销毁资源
+        for (int i = 0; i < playEffects.Count; i++)
+        {
+            playEffects[i].DestroyRes();
+        }
+        if (OnEndPlay != null)
+        {
+            OnEndPlay(null);
+        }
+    }
+
+
+    /// <summary>
+    /// 获得结果效果Id
+    /// </summary>
+    private int GetResultEffectId(HitResult hitResult, ResultEffectConfig _result)
+    {
+        switch (hitResult)
+        {
+            case HitResult.Critical:
+                return resultEffect.effect_onCritical;
+            case HitResult.Block:
+                return resultEffect.effect_onblock;
+            case HitResult.Hit:
+                return resultEffect.effect_onHit;
+            case HitResult.Dodge:
+                return resultEffect.effect_onDodge;
+            case HitResult.Absorb:
+                return resultEffect.effect_onAbsorb;
+            default:
+                return 0;
+        }
+    }
+
+    /// <summary>
+    /// 获得结果效果Id
+    /// </summary>
+    /// <param name="hitResult"></param>
+    /// <param name="_stateTemplate"></param>
+    /// <returns></returns>
+    private string GetResultActionId(HitResult hitResult, ResultEffectConfig _result)
+    {
+        string _charAction = string.Empty;
+        switch (hitResult)
+        {
+            case HitResult.Critical:
+                _charAction = _result.action_onCritical;
+                break;
+            case HitResult.Block:
+                _charAction = _result.action_onblock;
+                break;
+            case HitResult.Hit:
+                _charAction = _result.action_onHit;
+                break;
+            case HitResult.Dodge:
+                _charAction = _result.action_onDodge;
+                break;
+            case HitResult.Absorb:
+                _charAction = _result.action_onAbsorb;
+                break;
+        }
+        return _charAction;
+    }
+
+    //
+    private UICharActionOperation actionOperation;
+    private ResultEffectConfig resultEffect;
+    private StateEffectConfig stateEffect;
+    //
+    private const int WaitForSeconds = 0;
+    public List<UIPlayEffect> playEffects = new List<UIPlayEffect>();
+    private bool isPlayEnd;
+}

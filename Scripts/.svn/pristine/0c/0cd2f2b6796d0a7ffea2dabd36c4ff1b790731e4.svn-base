@@ -1,0 +1,323 @@
+﻿using GameEventDispose;
+using MCCombat;
+using System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UICharTagShow : UICharBase
+{
+
+
+    public void Init(UICharUnit charUnit, int sortingOrder)
+    {
+        this.charUnit = charUnit;
+        //
+        base.InitInfo(charUnit);
+        GetObj();
+        //
+        canvas.sortingOrder = sortingOrder;
+        rect = transform.GetComponent<RectTransform>();
+        Vector2 pos = new Vector2(0.5f, 0f);
+        rect.anchorMin = pos;
+        rect.anchorMax = pos;
+        rect.pivot = pos;
+        gameObject.SetActive(true);
+    }
+
+    public void Init(CombatUnit combatUnit, int sortingOrder)
+    {
+        base.InitInfo(combatUnit);
+        GetObj();
+        //
+        canvas.sortingOrder = sortingOrder;
+        gameObject.SetActive(true);
+    }
+
+
+    /// <summary>
+    /// 更新显示
+    /// </summary>
+    private void UpdateShow()
+    {
+        if (!isFirst)
+        {
+            return;
+        }
+        contentSizeFitter.enabled = false;
+        transform.position = charUnit.ActionOperation.HpPos;
+        rect.anchoredPosition = Vector3.right * 7f + Vector3.up *255f /*245f*/;
+        canvasGroup.alpha = 0;
+        gameObject.SetActive(true);
+        if (onselfTeam == null)
+        {
+            onselfTeam = UICombatTool.Instance.CombatSystem.GetTeamInfo(teamID);
+        }
+        if (otherTeam == null)
+        {
+            otherTeam = UICombatTool.Instance.CombatSystem.GetTeamInfo(teamID, false);
+        }
+        ResourceLoadUtil.DeleteChildObj(tag1);
+        ResourceLoadUtil.DeleteChildObj(tag2);
+        //首先更新治疗标签
+        if (onselfTeam.teamType == TeamType.Player)
+        {
+            if (onselfTeam.combatHealingTag.NowIndex == charIndex)
+            {
+                ResourceLoadUtil.InstantiateRes(healingObj, tag1);
+            }
+            //更新威胁标签
+            switch (GetWarningSum(otherTeam))
+            {
+                case 0:
+                    break;
+                case 1:
+                    ResourceLoadUtil.InstantiateRes(warningObj1, tag1);
+                    break;
+                default:
+                    ResourceLoadUtil.InstantiateRes(warningObj1, tag1);
+                    ResourceLoadUtil.InstantiateRes(warningObj2, tag1);
+                    break;
+            }
+        }
+        else
+        {
+            //更新威胁标签
+            bool isHighWarning = false;
+            bool isAllWarning = false;
+            CombatUnit combatUnit = onselfTeam.combatUnits.Find(a => a.teamId == teamID && a.initIndex == charIndex && charID == a.charAttribute.charID);
+            CSkillInfo skillInfo = combatUnit.GetAutoUseSkillInfo(1, UICombatTool.Instance.CombatSystem.NowRound);
+            isHighWarning = IsHaveHighWarning(skillInfo);
+            isAllWarning = IsHaveAllWarning(skillInfo);
+            //
+            skillInfo = combatUnit.GetAutoUseSkillInfo(2, UICombatTool.Instance.CombatSystem.NowRound);
+            if (!isHighWarning)
+            {
+                isHighWarning = IsHaveHighWarning(skillInfo);
+            }
+            if (!isAllWarning)
+            {
+                isAllWarning = IsHaveAllWarning(skillInfo);
+            }
+            //
+            skillInfo = combatUnit.GetAutoUseSkillInfo(3, UICombatTool.Instance.CombatSystem.NowRound);
+            if (!isHighWarning)
+            {
+                isHighWarning = IsHaveHighWarning(skillInfo);
+            }
+            if (!isAllWarning)
+            {
+                isAllWarning = IsHaveAllWarning(skillInfo);
+            }
+            //
+            skillInfo = combatUnit.GetAutoUseSkillInfo(4, UICombatTool.Instance.CombatSystem.NowRound);
+            if (!isHighWarning)
+            {
+                isHighWarning = IsHaveHighWarning(skillInfo);
+            }
+            if (!isAllWarning)
+            {
+                isAllWarning = IsHaveAllWarning(skillInfo);
+            }
+            //
+            if (isHighWarning)
+            {
+                ResourceLoadUtil.InstantiateRes(highWarningObj, tag1);
+            }
+            //
+            if (isAllWarning)
+            {
+                ResourceLoadUtil.InstantiateRes(allWarningObj, tag1);
+            }
+            //
+            if (combatUnit.isStunned)
+            {
+                ResourceLoadUtil.InstantiateRes(jiYunObj, tag1);
+            }
+            if (combatUnit.isWuShang)
+            {
+                ResourceLoadUtil.InstantiateRes(wuShangObj, tag1);
+            }
+            if (combatUnit.isFaShang)
+            {
+                ResourceLoadUtil.InstantiateRes(faShangObj, tag1);
+            }
+        }
+        //更新Npc标签
+        new CoroutineUtil(OpenShow());
+    }
+
+    /// <summary>
+    /// 打开显示
+    /// </summary>
+    /// <returns></returns>
+    private IEnumerator OpenShow()
+    {
+        yield return null;
+        contentSizeFitter.enabled = true;
+        canvasGroup.alpha = 1;
+    }
+
+    /// <summary>
+    /// 是否有威胁标签
+    /// </summary>
+    /// <param name="teamInfo"></param>
+    /// <returns></returns>
+    private int GetWarningSum(CombatTeamInfo teamInfo)
+    {
+        int sum = 0;
+        foreach (CombatUnit item in teamInfo.combatUnits)
+        {
+            foreach (PreselectedTargetInfo targetInfo in item.preselectedTargetInfos)
+            {
+                if (targetInfo.skillInfo is BossSkillInfo)
+                {
+                    if ((targetInfo.skillInfo as BossSkillInfo).bossSkill.isMarker != 1)
+                    {
+                        continue;
+                    }
+                    //有威胁标签
+                    foreach (System.Collections.Generic.KeyValuePair<int, System.Collections.Generic.List<CombatUnit>> info in targetInfo.preselectedTargets)
+                    {
+                        foreach (CombatUnit unit in info.Value)
+                        {
+                            if (unit.teamId == teamID && unit.initIndex == charIndex && charID == unit.charAttribute.charID)
+                            {
+                                sum++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return sum;
+    }
+
+    private bool IsHaveHighWarning(CSkillInfo skillInfo)
+    {
+        if (skillInfo == null)
+        {
+            return false;
+        }
+        return skillInfo.Combatskill.isHighThreat == 1;
+    }
+
+    private bool IsHaveAllWarning(CSkillInfo skillInfo)
+    {
+        if (skillInfo == null)
+        {
+            return false;
+        }
+        return skillInfo.Combatskill.isAoE == 1;
+    }
+
+    /// <summary>
+    /// 战斗阶段事件
+    /// </summary>
+    private void OnCombatStageEvent(PlayCombatStage arg1, object arg2)
+    {
+        switch (arg1)
+        {
+            case PlayCombatStage.CreateCombat:
+                break;
+            case PlayCombatStage.Opening:
+                break;
+            case PlayCombatStage.CombatPrepare:
+                break;
+            case PlayCombatStage.CreateRound:
+                UpdateShow();
+                break;
+            case PlayCombatStage.ChooseSkill:
+                break;
+            case PlayCombatStage.ImmediateSkillEffect:
+                break;
+            case PlayCombatStage.RoundInfo:
+                gameObject.SetActive(false);
+                break;
+            case PlayCombatStage.CombatEnd:
+                break;
+            case PlayCombatStage.InitLeft:
+                break;
+            case PlayCombatStage.InitRight:
+                break;
+            case PlayCombatStage.InitRes:
+                break;
+            case PlayCombatStage.PlayRoundInfoEnd:
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 获得组件
+    /// </summary>
+    private void GetObj()
+    {
+        canvasGroup = transform.GetComponent<CanvasGroup>();
+        canvas = transform.GetComponent<Canvas>();
+        contentSizeFitter = transform.GetComponent<ContentSizeFitter>();
+        //获得标签
+        tag1 = transform.Find("Tag1");
+        tag2 = transform.Find("Tag2");
+        foreach (Transform item in transform.Find("Temp"))
+        {
+            switch (item.name)
+            {
+                case "healing":
+                    healingObj = item.gameObject;
+                    break;
+                case "warning1":
+                    warningObj1 = item.gameObject;
+                    break;
+                case "warning2":
+                    warningObj2 = item.gameObject;
+                    break;
+                case "highWarning":
+                    highWarningObj = item.gameObject;
+                    break;
+                case "allWarning":
+                    allWarningObj = item.gameObject;
+                    break;
+                case "jiYun":
+                    jiYunObj = item.gameObject;
+                    break;
+                case "wuShang":
+                    wuShangObj = item.gameObject;
+                    break;
+                case "faShang":
+                    faShangObj = item.gameObject;
+                    break;
+            }
+        }
+        //
+        EventDispatcher.Instance.CombatEvent.AddEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatStageEvent);
+        isFirst = true;
+    }
+
+    private void OnDestroy()
+    {
+        EventDispatcher.Instance.CombatEvent.RemoveEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatStageEvent);
+    }
+
+
+    //
+    private RectTransform rect;
+    private Canvas canvas;
+    private CanvasGroup canvasGroup;
+    private ContentSizeFitter contentSizeFitter;
+    //
+    private Transform tag1;
+    private Transform tag2;
+    //
+    private GameObject healingObj;
+    private GameObject warningObj1;
+    private GameObject warningObj2;
+    private GameObject highWarningObj;
+    private GameObject allWarningObj;
+    private GameObject jiYunObj;
+    private GameObject wuShangObj;
+    private GameObject faShangObj;
+    //
+    private UICharUnit charUnit;
+    private CombatTeamInfo onselfTeam;
+    private CombatTeamInfo otherTeam;
+    private bool isFirst;
+}

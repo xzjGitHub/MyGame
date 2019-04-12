@@ -1,0 +1,1015 @@
+﻿using MCCombat;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+
+/// <summary>
+/// 战斗系统
+/// </summary>
+public partial class CombatSystem : IGameModule
+{
+    private static CombatSystem instance;
+
+    public static CombatSystem Instance
+    {
+        get { return instance; }
+    }
+
+    public CombatResult combatResult = new CombatResult();
+    /// <summary>
+    /// 战斗回合
+    /// </summary>
+    public List<CombatRound> combatRounds = new List<CombatRound>();
+    /// <summary>
+    /// 玩家队伍信息
+    /// </summary>
+    public CombatTeamInfo PlayerTeamInfo { get { return playerTeamInfo; } }
+    /// <summary>
+    /// 敌方队伍信息
+    /// </summary>
+    public CombatTeamInfo EnemyTeamInfo { get { return enemyTeamInfo; } }
+
+    /// <summary>
+    /// 获得角色当前属性
+    /// </summary>
+    /// <param name="_list"></param>
+    public List<CombatUnit> GetCombatUnitInfos(TeamType teamType)
+    {
+        return teamType == TeamType.Player ? playerTeamInfo.combatUnits : enemyTeamInfo.combatUnits;
+    }
+    /// <summary>
+    /// 获得战斗单元信息
+    /// </summary>
+    public CombatUnit GetCombatUnitInfo(int _teamId, int _charIndex)
+    {
+        return
+            (playerTeamInfo.teamId == _teamId ? playerTeamInfo : enemyTeamInfo).combatUnits.Find(
+                a => a.teamId == _teamId && a.initIndex == _charIndex);
+    }
+    /// <summary>
+    /// 获得战斗单元信息
+    /// </summary>
+    public CombatUnit GetCombatUnitInfo(CombatUnit combatUnit)
+    {
+        return
+            (playerTeamInfo.teamId == combatUnit.teamId ? playerTeamInfo : enemyTeamInfo).combatUnits.Find(
+                a => a.teamId == combatUnit.teamId && a.charAttribute.charID == combatUnit.charAttribute.charID && a.initIndex == combatUnit.initIndex);
+    }
+    /// <summary>
+    /// 获得队伍信息
+    /// </summary>
+    /// <param name="teamID"></param>
+    /// <returns></returns>
+    public CombatTeamInfo GetTeamInfo(int teamID, bool isOneslef = true)
+    {
+        if (isOneslef)
+        {
+            return teamID == playerTeamInfo.teamId ? playerTeamInfo : enemyTeamInfo;
+        }
+        return teamID == playerTeamInfo.teamId ? enemyTeamInfo : playerTeamInfo;
+    }
+
+    /// <summary>
+    /// 初始化队伍信息
+    /// </summary>
+    private void Init()
+    {
+        initiativeTeamId = -1;
+        allCombatUnit.Clear();
+        combatRounds.Clear();
+        enemyTeamInfo = null;
+        playerTeamInfo = null;
+        combatResult = null;
+    }
+
+    #region 计算先攻队伍
+
+    /// <summary>
+    /// 得到先攻队伍ID
+    /// </summary>
+    /// <returns></returns>
+    private int GetTeamInitiativeTeamId()
+    {
+        int _enemyinitiative = GetTeamInitiativeValue(enemyTeamInfo);
+        int _playinitiative = GetTeamInitiativeValue(playerTeamInfo);
+        //如果玩家队伍的finalTeamInitiative >= 怪物的finalTeamInitiative * combat_config. initiativeRatio float，则玩家队伍先行动；
+        if (_playinitiative >= _enemyinitiative * combat_Config.initiativeRatio)
+        {
+            return playerTeamInfo.teamId;
+        }
+        //
+        int temp = RandomBuilder.RandomIndex_Chances(new List<float> { _playinitiative, _enemyinitiative }, _enemyinitiative + _playinitiative);
+        return temp == 0 ? playerTeamInfo.teamId : enemyTeamInfo.teamId;
+    }
+
+    /// <summary>
+    /// 得到队伍先攻权的值
+    /// </summary>
+    private int GetTeamInitiativeValue(CombatTeamInfo _combatTeamInfo)
+    {
+        switch (_combatTeamInfo.teamType)
+        {
+            case TeamType.Player:
+                return _combatTeamInfo.combatUnits.Sum(t => t.tempCharInitiative);
+            case TeamType.Enemy:
+                return enemyBaseTeamInitiative;
+            default:
+                return enemyBaseTeamInitiative;
+        }
+    }
+
+    #endregion
+
+    #region 初始战斗
+
+    /// <summary>
+    /// 初始化战斗队伍技能操作
+    /// </summary>
+    /// <param name="combatUnits">攻击方的角色列表</param>
+    private void InitCombatTeamSkillOperation(List<CombatUnit> combatUnits)
+    {
+        for (int i = 0; i < combatUnits.Count; i++)
+        {
+            if (combatUnits[i].hp == 0)
+            {
+                continue;
+            }
+            //战术技能列表操作
+            CombatPrepareSkillListOperation(combatUnits[i], combatUnits[i].tacticalSkillList);
+        }
+    }
+
+    /// <summary>
+    /// 战斗准备技能列表操作
+    /// </summary>
+    /// <param name="_attackCombatUnit">攻击方的角色</param>
+    /// <param name="_skillIds">攻击方角色的技能列表</param>
+    private void CombatPrepareSkillListOperation(CombatUnit _attackCombatUnit, List<int> _skillIds)
+    {
+        foreach (int item in _skillIds)
+        {
+            //战斗单元使用技能操作
+            CombatUnitUseSkillOperation(_attackCombatUnit, item);
+        }
+    }
+
+    /// <summary>
+    /// 战斗单元使用技能操作
+    /// </summary>
+    /// <param name="_attackCombatUnit">攻击的战斗单元</param>
+    /// <param name="_skillId">技能ID</param>     
+    private void CombatUnitUseSkillOperation(CombatUnit _attackCombatUnit, int skillID)
+    {
+        //技能生效
+        SkillTakeEffect(new RoundActionInfo(_attackCombatUnit, new CombatSkillInfo(skillID, _attackCombatUnit.charAttribute.skillCDReduction)), null);
+    }
+
+    #endregion
+
+    #region 战斗中使用技能操作
+
+    #region 使用立即生效技能
+
+    /// <summary>
+    /// 使用立即生效技能
+    /// </summary>
+    private List<CRTargetInfo> UseImmediateSkill(CSkillInfo skillInfo, CombatUnit combatUnit, out List<CRExtraUseSkill> extraUseSkills, bool extra = true)
+    {
+        List<CRTargetInfo> targetInfos = UseSkillResult(skillInfo, combatUnit, out extraUseSkills);
+        if (!extra)
+        {
+            return targetInfos;
+        }
+        //添加额外的使用技能（后置生效）
+        foreach (CRExtraUseSkill item in extraUseSkills)
+        {
+            List<CRExtraUseSkill> _extraUseSkills;
+            targetInfos.AddRange(UseImmediateSkill(item.skillInfo, combatUnit, out _extraUseSkills, false));
+        }
+        //
+        return targetInfos;
+    }
+
+    #endregion
+
+    #region 使用普通技能
+
+    /// <summary>
+    /// 战斗单元使用技能操作
+    /// </summary>
+    private void CombatUnitUseSkill(RoundActionInfo roundActionInfo, CombatRound combatRound)
+    {
+        //更新使用技能后的CD
+        CSkillInfo skillInfo = CombatUnitUseSkill(roundActionInfo);
+        bool isReplace = skillInfo.ID != roundActionInfo.skillInfo.ID;
+        //更新使用技能信息
+        (isReplace ? skillInfo : roundActionInfo.skillInfo).UseSkill();
+        //检测手动技能的激励情况
+        if (skillInfo.SkillType == SkillType.Manual)
+        {
+            //消耗以前技能魔能
+            GetTeamInfo(roundActionInfo.combatUnit.teamId).UseEnergy((int)roundActionInfo.skillInfo.ManaCost);
+            if (skillInfo.isIncentive)
+            {
+                GetCombatUnitInfo(roundActionInfo.combatUnit.teamId, skillInfo.incentiveFromIndex).charAttribute.SetFinalEncourage(-1);
+                LogHelperLSK.Log("激励了使用激励charIndex=" + skillInfo.incentiveFromIndex);
+            }
+        }
+        //
+        roundActionInfo.UpdateSkillInfo(skillInfo);
+        //技能生效
+        SkillTakeEffect(roundActionInfo, combatRound);
+        //修正所有角色属性
+        foreach (CombatUnit item in allCombatUnit)
+        {
+            FinalAmendCombatUnitAttribute(item);
+        }
+    }
+    /// <summary>
+    /// 技能生效
+    /// </summary>
+    /// <param name="_skillId">技能ID</param>
+    /// <param name="_attackCombatUnit">攻击的战斗单元</param>
+    private void SkillTakeEffect(RoundActionInfo roundActionInfo, CombatRound combatRound, bool extra = true)
+    {
+        //新建战斗结果
+        CombatRoundResult _result = new CombatRoundResult(CommandResultType.CastSkill)
+        {
+            index = roundActionInfo.combatUnit.initIndex,
+            teamID = roundActionInfo.combatUnit.teamId,
+            charID = roundActionInfo.combatUnit.charAttribute.charID,
+            skillID = roundActionInfo.skillId,
+            resultType = CommandResultType.CastSkill,
+            targetIndexs = new List<int>(),
+            castSkill = new CRCastSkill
+            {
+                castTeamId = roundActionInfo.combatUnit.teamId,
+                castIndex = roundActionInfo.combatUnit.initIndex,
+                castCharId = roundActionInfo.combatUnit.charAttribute.charID,
+                castSkillId = roundActionInfo.skillId,
+                isFire = true,
+                targetInfos = new List<CRTargetInfo>(),
+            }
+        };
+        //新建额外的UseSkill列表____后置生效
+        List<CRExtraUseSkill> extraUseSkills = new List<CRExtraUseSkill>();
+        //        
+        _result.castSkill.targetInfos = UseSkillResult(roundActionInfo.skillInfo, roundActionInfo.combatUnit, out extraUseSkills);
+        //添加回合结果信息
+        if (combatRound == null)
+        {
+            return;
+        }
+        combatRound.combatRoundResults.Add(_result);
+        if (!extra)
+        {
+            return;
+        }
+        //添加额外的使用技能（后置生效）
+        foreach (CRExtraUseSkill item in extraUseSkills)
+        {
+            CombatUnit temp = GetCombatUnitInfo(item.castTeamId, item.castIndex);
+            RoundActionInfo actionInfo = new RoundActionInfo(temp, new CombatSkillInfo(item.castSkillId, temp.charAttribute.skillCDReduction));
+            SkillTakeEffect(actionInfo, combatRound, false);
+        }
+    }
+
+    /// <summary>
+    /// 使用技能结果
+    /// </summary>
+    private List<CRTargetInfo> UseSkillResult(CSkillInfo skillInfo, CombatUnit atkUnit, out List<CRExtraUseSkill> extraUseSkills)
+    {
+        int skillID = skillInfo.ID;
+        List<CRTargetInfo> targetInfos = new List<CRTargetInfo>();
+        //新建额外的UseSkill列表____后置生效
+        extraUseSkills = new List<CRExtraUseSkill>();
+        //        
+        List<CombatUnit> targetUnits = new List<CombatUnit>();
+        combatskillTemplate = skillInfo.Combatskill;
+        ////消耗能量值
+        //if (skillInfo.isIncentive)
+        //{
+        //    atkUnit.charAttribute.SetFinalEncourage(-1);
+        //}
+        //获得高威胁、只针对怪物
+        if (combatskillTemplate.isHighThreat == 1 && atkUnit.isMob)
+        {
+            atkUnit.highThreat = 1;
+        }
+        //得到了能生效的列表
+        List<int> targetsetIds = GetUseTargetSets(combatskillTemplate.targetSetList, atkUnit, skillInfo);
+        //首先得到可以生效的Targetset列表和对应的ActionID
+        List<int> actionIndexs = GetTargetsetActionIndexs(targetsetIds);
+        //计算效果
+        for (int i = 0; i < targetsetIds.Count; i++)
+        {
+            targetsetTemplate = Targetset_templateConfig.GetTargetset_template(targetsetIds[i]);
+            //根据技能目标得到需要操作的战斗角色列表
+            //  if (combatskillTemplate.targetCategory == 0)
+            //   {
+            if (targetsetTemplate == null)
+            {
+                LogHelperLSK.Log(targetsetIds[i] + "不存在");
+                continue;
+            }
+
+            TargetType targetType = (TargetType)(skillInfo is BossSkillInfo ? (skillInfo as BossSkillInfo).bossSkill.altTargeType[i] : targetsetTemplate.targetType);
+            //给队伍添加状态 ----无演示效果
+            if (targetType == TargetType.SameTeam)
+            {
+                foreach (int item in targetsetTemplate.stateList)
+                {
+                    CombatTeamInfo teamInfo = GetTeamInfo(atkUnit.teamId);
+                    teamInfo.AddState(new StateAttribute(skillInfo, targetsetIds[i], item, atkUnit, null, nowRound, teamInfo));
+                }
+                continue;
+            }
+            //得到预选目标角色
+            PreselectedTargetInfo temp = atkUnit.preselectedTargetInfos.Find(a => a.skillID == skillID);
+            if (temp != null)
+            {
+                if (temp.preselectedTargets.Count > i)
+                {
+                    targetUnits = temp.preselectedTargets[i];
+                    while (targetUnits.Count > 0 && targetUnits.Any(a => a.hp <= 0))
+                    {
+                        targetUnits.Remove(targetUnits.Find(a => a.hp <= 0));
+                        continue;
+                    }
+                }
+            }
+            //重新选择目标
+            if (targetUnits == null || targetUnits.Count == 0)
+            {
+                targetUnits = GetCombatUnits_Targetset(atkUnit, targetsetTemplate, targetType);
+            }
+            if (targetUnits == null || targetUnits.Count == 0)
+            {
+                continue;
+            }
+            //添加目标信息
+            targetInfos.Add(SkillTargetInfo(atkUnit, skillInfo, targetsetTemplate, targetUnits, actionIndexs[i], extraUseSkills));
+        }
+        return targetInfos;
+    }
+
+    /// <summary>
+    /// 技能目标信息
+    /// </summary>
+    private CRTargetInfo SkillTargetInfo(CombatUnit atkUnit, CSkillInfo skillInfo, Targetset_template targetset, List<CombatUnit> targetUnits, int actionIndex, List<CRExtraUseSkill> extraUseSkills)
+    {
+        //最终爆击率
+        //新建目标信息
+        CRTargetInfo targetInfo = new CRTargetInfo
+        {
+            actionIndex = actionIndex,
+            targetId = targetset.targetSetID,
+            //  skillEffects = new List<CRSkillEffect>(),
+            targetUnitInfos = new List<CRTargetUnitInfo>(),
+        };
+        int skillId = skillInfo.ID;
+        bool isXixue = (TargetType)targetset.targetType == TargetType.XiXue;
+        float returnResultValue = 0;
+        List<float> returnResultValues = new List<float>();
+        //检查每个受击目标状态的加载
+        for (int i = 0; i < targetUnits.Count; i++)
+        {
+            CombatUnit hitUnit = targetUnits[i];
+
+            if (hitUnit.hp <= 0)
+            {
+                continue;
+            }
+            //攻击类型 
+            HitResult _hitResult = GetHitResult(0, 0);
+            CRTargetUnitInfo targetUnitInfo = new CRTargetUnitInfo
+            {
+                hitTeamId = hitUnit.teamId,
+                hitCharId = hitUnit.charAttribute.charID,
+                hitIndex = hitUnit.initIndex,
+                hitResult = _hitResult,
+                skillEffect = new CRSkillEffect(),
+            };
+            float temp;
+
+            //是吸血
+            if (isXixue)
+            {
+                extraUseSkills.AddRange(CombatUnitLoadXiXueState(targetset, skillInfo, _hitResult, atkUnit, hitUnit, returnResultValue, out targetUnitInfo.skillEffect, out temp));
+                //
+                returnResultValues.Add(temp);
+                returnResultValue += temp;
+            }
+            else
+            {
+                //战斗单元加载状态
+                extraUseSkills.AddRange(CombatUnitLoadState(targetset, skillInfo, targetset.stateList, _hitResult, atkUnit, hitUnit, out targetUnitInfo.skillEffect, out temp));
+            }
+
+            //添加技能效果信息
+            //   targetInfo.skillEffects.Add(skillEffect);      
+            //添加技能效果信息
+            targetInfo.targetUnitInfos.Add(targetUnitInfo);
+        }
+        //给自己添加吸血效果
+        if (isXixue)
+        {
+            //1、选个别人添加空状态
+            foreach (CRTargetUnitInfo item in targetInfo.targetUnitInfos)
+            {
+                item.skillEffect.skillEffectResults.Add(new CRSkillEffectResult()
+                {
+                    CrSkillEffectResultType = CRSkillEffectResultType.Miss,
+                    execState = null,
+                });
+            }
+            //2、给自已添加
+            for (int i = 0; i < returnResultValues.Count; i++)
+            {
+                HitResult _hitResult = GetHitResult(0, 0);
+                CRTargetUnitInfo targetUnitInfo = new CRTargetUnitInfo
+                {
+                    hitTeamId = atkUnit.teamId,
+                    hitCharId = atkUnit.charAttribute.charID,
+                    hitIndex = atkUnit.initIndex,
+                    hitResult = _hitResult,
+                    skillEffect = new CRSkillEffect(),
+                };
+
+                //加载空状态效果
+                for (int j = 0; j < targetset.stateList.Count - 1; j++)
+                {
+                    CRSkillEffectResult skillEffectResult = new CRSkillEffectResult()
+                    {
+                        CrSkillEffectResultType = CRSkillEffectResultType.Miss,
+                        execState = null,
+                    };
+                    targetUnitInfo.skillEffect.skillEffectResults = new List<CRSkillEffectResult>
+                    {
+                        skillEffectResult
+                    };
+                }
+                //加载吸血效果
+                int stateID = targetset.stateList.Last();
+                float tempValue;
+                extraUseSkills.AddRange(AddStateInfo(skillInfo, targetset.targetSetID, stateID, atkUnit, atkUnit, HitResult.Hit, targetUnitInfo.skillEffect, returnResultValues[i], out tempValue));
+                targetUnitInfo.sourceIndex = i;
+                //
+                targetInfo.targetUnitInfos.Add(targetUnitInfo);
+            }
+        }
+        return targetInfo;
+    }
+    /// <summary>
+    /// 战斗单元使用
+    /// </summary>
+    private CSkillInfo CombatUnitUseSkill(RoundActionInfo roundActionInfo)
+    {
+        List<CSkillInfo> _infos = GetCombatSkillInfo(roundActionInfo);
+        if (_infos == null || _infos.Count == 0)
+        {
+            return null;
+        }
+
+        CSkillInfo _info = _infos.Find(a => a.ID == roundActionInfo.skillId);
+        if (_info == null)
+        {
+            return null;
+        }
+        float activeHealing = roundActionInfo.combatUnit.isMob ?
+            (roundActionInfo.combatUnit.charAttribute as MobAttribute).mob_template.activeHealing : roundActionInfo.combatUnit.charAttribute.char_template
+            .activeHealing;
+
+        switch (_info.SkillType)
+        {
+            case SkillType.Normal:
+            case SkillType.Heal:
+                return
+                    ((CombatSkillInfo)_info).GetUseSkillInfo(activeHealing, _infos, GetCombatUnitInfos(roundActionInfo.combatUnit.teamType), nowRound);
+            case SkillType.Manual:
+                return _info;
+            case SkillType.Common:
+                return _info;
+            default:
+                return
+                    ((CombatSkillInfo)_info).GetUseSkillInfo(activeHealing, _infos, GetCombatUnitInfos(roundActionInfo.combatUnit.teamType), nowRound);
+        }
+    }
+
+    private List<CSkillInfo> GetCombatSkillInfo(RoundActionInfo roundActionInfo)
+    {
+        switch (roundActionInfo.skillType)
+        {
+            case SkillType.Normal:
+            case SkillType.Heal:
+                switch (roundActionInfo.skillIndex)
+                {
+                    case 1:
+                        return roundActionInfo.combatUnit.combatSkills;
+                    case 2:
+                        return roundActionInfo.combatUnit.combatSkills2;
+                    case 3:
+                        return roundActionInfo.combatUnit.combatSkills3;
+                    case 4:
+                        return roundActionInfo.combatUnit.combatSkills4;
+                    default:
+                        return roundActionInfo.combatUnit.combatSkills;
+                }
+            case SkillType.Manual:
+                return roundActionInfo.combatUnit.manualSkills;
+            case SkillType.Common:
+                return roundActionInfo.combatUnit.commonSkills;
+        }
+        return null;
+    }
+    #endregion
+
+    /// <summary>
+    /// 最终角色属性修正
+    /// </summary>
+    /// <param name="_combatUnit"></param>
+    private void FinalAmendCombatUnitAttribute(CombatUnit _combatUnit)
+    {
+        _combatUnit.hp = Math.Max(0, _combatUnit.hp);
+    }
+
+    #endregion
+
+    #region 初始化战斗行动序列
+    /// <summary>
+    /// 战斗单元行动排序
+    /// </summary>
+    private List<RoundActionInfo> InitUnitActionSort()
+    {
+        List<RoundActionInfo> roundActionInfos = new List<RoundActionInfo>();
+        //添加队伍行动序列
+        roundActionInfos.AddRange(InitActionSort(enemyTeamInfo));
+        roundActionInfos.AddRange(InitActionSort(playerTeamInfo));
+        //排序 --- 技能类型>选择顺序>最终速度>初始速度>先攻
+        if (roundActionInfos.Count > 0)
+        {
+            roundActionInfos = initiativeTeamId == playerTeamInfo.teamId
+          ? roundActionInfos.OrderByDescending(a => a.castType).ThenBy(b => b.selectIndex).ThenBy(c => c.finalSpeed).ThenBy(d => d.combatUnit.initialSpeed).ThenBy(e => e.combatUnit.teamId).ToList()
+          : roundActionInfos.OrderByDescending(a => a.castType).ThenBy(b => b.selectIndex).ThenBy(c => c.finalSpeed).ThenBy(d => d.combatUnit.initialSpeed).ThenByDescending(e => e.combatUnit.teamId).ToList();
+        }
+        return roundActionInfos;
+    }
+
+    /// <summary>
+    ///初始化队伍行动
+    /// </summary>
+    private List<RoundActionInfo> InitActionSort(CombatTeamInfo combatTeamInfo)
+    {
+        //是否为测试模式
+        if (isTestSkill)
+        {
+            return CombatShowTest(combatTeamInfo);
+        }
+        List<RoundActionInfo> roundActionInfos = new List<RoundActionInfo>();
+        //添加玩家
+        foreach (CombatUnit item in combatTeamInfo.combatUnits)
+        {
+            //清除血量为0的最终速度
+            if (item.hp - item.negativeHP <= 0)
+            {
+                item.finalSpeed = MaxSpeed;
+                continue;
+            }
+            //是否是玩家
+            if (combatTeamInfo.teamType == TeamType.Player)
+            {
+                // PlayerSkillInfo skillInfo = playerSelects.Find(a => a.charIndex == item.initIndex && a.charID == item.charAttribute.charID);
+
+                UseManualSkillInfo skillInfo = null;
+                if (playerSelecteManualSkills != null)
+                {
+                    skillInfo = playerSelecteManualSkills.Find(a => a.charIndex == item.initIndex);
+                }
+                CSkillInfo info;
+                //先从手动技能表中查找----再从战斗技能表中选择
+                if (skillInfo != null)
+                {
+                    info = item.manualSkills.Find(a => a.ID == skillInfo.manualSkillID);
+                    info.isIncentive = skillInfo.isIncentive;
+                    info.incentiveFromIndex = skillInfo.incentiveFromIndex;
+                }
+                else
+                {
+                    info = item.GetAutoUseSkillInfo(1, nowRound);
+                }
+                //有可以使用的技能
+                if (info != null)
+                {
+                    roundActionInfos.Add(GetRoundActionInfo(item, info));
+                    if (skillInfo != null)
+                    {
+                        roundActionInfos.Last().selectIndex = skillInfo.selectIndex;
+                    }
+                }
+            }
+            else
+            {
+                //手动选择技能
+                PlayerSkillInfo skillInfo = enemySelects.Find(a => a.charIndex == item.initIndex && a.charID == item.charAttribute.charID);
+                CSkillInfo info;
+                if (skillInfo != null)
+                {
+                    info = item.manualSkills.Find(a => a.ID == skillInfo.skillId);
+                    roundActionInfos.Add(GetRoundActionInfo(item, info));
+                    roundActionInfos.Last().selectIndex = skillInfo.SelectIndex;
+                }
+                else
+                {
+                    //第一次
+                    //根据技能中选择当前回合行动的次数
+                    info = item.GetAutoUseSkillInfo(1, nowRound);
+                    if (info != null)
+                    {
+                        roundActionInfos.Add(GetRoundActionInfo(item, info));
+                    }
+                    //是否是Npc
+                    if (item.isMob)
+                    {
+                        int nowSum = combatTeamInfo.combatUnits.Count(a => a.hp - item.negativeHP > 0);
+                        //第二次
+                        info = item.GetAutoUseSkillInfo(2, nowRound);
+                        if (info != null)
+                        {
+                            roundActionInfos.Add(GetRoundActionInfo(item, info, 2, nowSum));
+                        }
+                        //第三次
+                        info = item.GetAutoUseSkillInfo(3, nowRound);
+                        if (info != null)
+                        {
+                            roundActionInfos.Add(GetRoundActionInfo(item, info, 3, nowSum));
+                        }
+                        //第四次
+                        info = item.GetAutoUseSkillInfo(4, nowRound);
+                        if (info != null)
+                        {
+                            roundActionInfos.Add(GetRoundActionInfo(item, info, 4, nowSum));
+                        }
+                    }
+                }
+            }
+
+        }
+        return roundActionInfos;
+    }
+
+    /// <summary>
+    /// 战斗显示测试
+    /// </summary>
+    /// <param name="combatTeamInfo"></param>
+    /// <returns></returns>
+    private List<RoundActionInfo> CombatShowTest(CombatTeamInfo combatTeamInfo)
+    {
+        List<RoundActionInfo> roundActionInfos = new List<RoundActionInfo>();
+        int _index = 0;
+        foreach (int skillID in combatTeamInfo.teamType == TeamType.Player ? playerUseSkills : enemyUseSkills)
+        {
+            if (_index >= combatTeamInfo.combatUnits.Count)
+            {
+                continue;
+            }
+
+            Combatskill_template _combatskillTemplate = Combatskill_templateConfig.GetCombatskill_template(skillID);
+            if (_combatskillTemplate == null)
+            {
+                continue;
+            }
+            roundActionInfos.Add(GetRoundActionInfo(combatTeamInfo.combatUnits[_index], skillID));
+            _index++;
+        }
+        return roundActionInfos;
+    }
+
+    /// <summary>
+    /// 获得回合行动信息
+    /// </summary>
+    /// <param name="combatUnit"></param>
+    /// <param name="skillID"></param>
+    /// <returns></returns>
+    private RoundActionInfo GetRoundActionInfo(CombatUnit combatUnit, int skillID, int skillIndex = 1, int nowSum = 0)
+    {
+        CSkillInfo skillInfo = ((((combatUnit.combatSkills.Find(a => a.ID == skillID) ??
+                                  combatUnit.combatSkills2.Find(a => a.ID == skillID)) ??
+                                 combatUnit.combatSkills3.Find(a => a.ID == skillID)) ??
+                                combatUnit.combatSkills4.Find(a => a.ID == skillID)) ??
+                               combatUnit.manualSkills.Find(a => a.ID == skillID)) ??
+                              combatUnit.commonSkills.Find(a => a.ID == skillID);
+        //
+        if (skillInfo == null)
+        {
+            if (!combatUnit.tacticalSkillList.Contains(skillID))
+            {
+                throw new ArgumentException("获取SkillInfo出错：" + skillID, "skillID");
+            }
+
+            skillInfo = new CombatSkillInfo(skillID, combatUnit.charAttribute.skillCDReduction);
+        }
+        return GetRoundActionInfo(combatUnit, skillInfo, skillIndex, nowSum);
+    }
+
+    /// <summary>
+    /// 获得回合行动信息
+    /// </summary>
+    /// <param name="combatUnit"></param>
+    /// <param name="skillInfo"></param>
+    /// <returns></returns>
+    private RoundActionInfo GetRoundActionInfo(CombatUnit combatUnit, CSkillInfo skillInfo, int skillIndex = 1, int nowSum = 0)
+    {
+        return new RoundActionInfo(combatUnit, skillInfo)
+        {
+            finalSpeed = combatUnit.finalSpeed + nowSum * (skillIndex - 1),
+            skillId = skillInfo.ID,
+            castType = skillInfo.CastType,
+            skillIndex = skillIndex,
+            skillType = skillInfo.SkillType,
+        };
+    }
+
+    #endregion
+
+    #region 战斗结束状态
+    /// <summary>
+    /// 得到战斗是否结束
+    /// </summary>
+    /// <returns></returns>
+    private bool IsCombatEnd(CombatResult combatResult = null)
+    {
+        return IsMyCombatEnd(combatResult) || IsOtherCombatEnd(combatResult);
+    }
+    /// <summary>
+    /// 得到自己战斗是否结束
+    /// </summary>
+    /// <returns></returns>
+    private bool IsMyCombatEnd(CombatResult combatResult)
+    {
+        if (combatResult != null)
+        {
+            combatResult.victoryTeam = enemyTeamInfo.teamId;
+        }
+
+        return playerTeamInfo.combatUnits.All(t => t.hp - t.negativeHP <= 0);
+    }
+    /// <summary>
+    /// 得到其他战斗是否结束
+    /// </summary>
+    /// <returns></returns>
+    private bool IsOtherCombatEnd(CombatResult combatResult)
+    {
+        if (combatResult != null)
+        {
+            combatResult.victoryTeam = playerTeamInfo.teamId;
+        }
+
+        return enemyTeamInfo.combatUnits.All(t => t.hp - t.negativeHP == 0);
+    }
+    #endregion
+
+    /// <summary>
+    /// 自动恢复护盾护甲
+    /// </summary>
+    /// <param name="combat"></param>
+    private List<CRImmediateShowEffect> AutoRecoveryShieldArmor(CombatUnit combat, int nowRound)
+    {
+        combat.tempArmor = 0;
+        combat.tempShield = 0;
+        if (nowRound % 3 != 1)
+        {
+            return new List<CRImmediateShowEffect>();
+        }
+        //
+        List < CRImmediateShowEffect > list=new List<CRImmediateShowEffect>();
+       int vaule = 0;
+        CRImmediateShowEffect effect;
+        //护甲
+        if (combat.maxArmor > 0)
+        {
+            effect=new CRImmediateShowEffect(combat){effectType = ImmediateShowEffectType.ArmorRecover};
+            CREffectResult effectResult=new CREffectResult(combat);
+            vaule = combat.armor + (int)combat.charAttribute.finalArmorReg;
+            if (vaule > combat.maxArmor)
+            {
+                combat.armor = combat.maxArmor;
+                combat.tempArmor = vaule - combat.maxArmor;
+                effectResult.periodArmor = combat.tempArmor;
+            }
+            else
+            {
+                combat.armor = vaule;
+            }
+            effectResult.currentArmor = combat.armor;
+            effect.effectResult = effectResult;
+            list.Add(effect);
+        }
+        //护盾
+        if (combat.maxShield > 0)
+        {
+            effect = new CRImmediateShowEffect(combat) { effectType = ImmediateShowEffectType.ShieldRecover };
+            CREffectResult effectResult = new CREffectResult(combat);
+            vaule = combat.shield + (int)combat.charAttribute.finalShieldReg;
+            if (vaule > combat.maxShield)
+            {
+                combat.shield = combat.maxShield;
+                combat.tempShield = vaule - combat.maxShield;
+                effectResult.periodShield = combat.tempShield;
+            }
+            else
+            {
+                combat.shield = vaule;
+            }
+            effectResult.currentShield = combat.shield;
+            effect.effectResult = effectResult;
+            list.Add(effect);
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// 更新战斗单元技能的使用回合
+    /// </summary>
+    private void UpdateUnitSkillUseRound(List<CombatUnit> _list)
+    {
+        if (isTestSkill)
+        {
+            return;
+        }
+        //
+        foreach (CombatUnit item in _list)
+        {
+            if (item.IsBoss)
+            {
+                List<CSkillInfo> list = new List<CSkillInfo>();
+                foreach (KeyValuePair<int, Dictionary<int, List<BossSkillInfo>>> infos in item.AllBossInfo)
+                {
+                    foreach (KeyValuePair<int, List<BossSkillInfo>> bossInfo in infos.Value)
+                    {
+                        foreach (BossSkillInfo skillInfo in bossInfo.Value)
+                        {
+                            list.Add(skillInfo);
+                        }
+                    }
+                }
+                UpdateCombatSkillUseRound(list);
+                continue;
+            }
+            UpdateCombatSkillUseRound(item.combatSkills);
+            UpdateCombatSkillUseRound(item.combatSkills2);
+            UpdateCombatSkillUseRound(item.combatSkills3);
+            UpdateCombatSkillUseRound(item.combatSkills4);
+            UpdateCombatSkillUseRound(item.commonSkills);
+            UpdateCombatSkillUseRound(item.manualSkills);
+        }
+    }
+    /// <summary>
+    /// 更新战斗技能使用回合
+    /// </summary>
+    private void UpdateCombatSkillUseRound(List<CSkillInfo> infos)
+    {
+        foreach (CSkillInfo item in infos)
+        {
+            UpdateCombatSkillUseRound(item);
+        }
+    }
+    /// <summary>
+    /// 更新战斗技能使用回合
+    /// </summary>
+    private void UpdateCombatSkillUseRound(CSkillInfo info)
+    {
+        info.isIncentive = false;
+        info.UpdateUseRound();
+    }
+    /// <summary>
+    /// 获得角色当前属性
+    /// </summary>
+    /// <param name="_list"></param>
+    private List<CombatCharInfo> GetCombatUnitInfos()
+    {
+        List<CombatCharInfo> _list = new List<CombatCharInfo>();
+        foreach (CombatUnit item in allCombatUnit)
+        {
+            //角色属性
+            CombatCharInfo _charInfo = new CombatCharInfo
+            {
+                teamID = item.teamId,
+                index = item.initIndex,
+                charID = item.charAttribute.charID,
+                templateID = item.charAttribute.templateID,
+                hp = item.hp,
+                maxHp = item.maxHp,
+                exp = (int)item.charAttribute.charExp,
+            };
+            //技能属性
+            SetSkillInfo(_charInfo.combatSkills4, item.combatSkills);
+            SetSkillInfo(_charInfo.combatSkills4, item.combatSkills2);
+            SetSkillInfo(_charInfo.combatSkills4, item.combatSkills3);
+            SetSkillInfo(_charInfo.combatSkills4, item.combatSkills4);
+            SetSkillInfo(_charInfo.manualSkills, item.manualSkills);
+            SetSkillInfo(_charInfo.commonSkills, item.commonSkills);
+            //状态属性
+            foreach (StateAttribute state in item.States)
+            {
+                _charInfo.stateInfos.Add(new UnitStateInfo(state));
+            }
+            //
+            _list.Add(_charInfo);
+        }
+        return _list;
+    }
+
+    private void SetSkillInfo(List<UnitSkillInfo> skillInfos, List<CSkillInfo> skillInfo)
+    {
+        foreach (CSkillInfo item in skillInfo)
+        {
+            skillInfos.Add(new UnitSkillInfo { skillID = item.ID, cooldown = item.UseRound });
+        }
+
+    }
+
+    #region 重新接口
+    public void BeforeStartModule()
+    {
+
+    }
+
+    public void StartModule()
+    {
+
+    }
+
+    public void AfterStartModule()
+    {
+
+    }
+
+    public void BeforeStopModule()
+    {
+
+    }
+
+    public void StopModule()
+    {
+
+    }
+
+    public void AfterStopModule()
+    {
+
+    }
+
+    public void BeforeUpdateModule()
+    {
+
+    }
+
+    public void UpdateModule()
+    {
+
+    }
+
+    public void AfterUpdateModule()
+    {
+
+    }
+
+    public void OnFreeScene()
+    {
+
+    }
+    #endregion
+
+    /// <summary>
+    /// 玩家队伍信息
+    /// </summary>
+    private CombatTeamInfo playerTeamInfo;
+    /// <summary>
+    /// 敌方队伍信息
+    /// </summary>
+    private CombatTeamInfo enemyTeamInfo;
+    //
+    private const int MaxSpeed = 10000;
+    private Combatskill_template combatskillTemplate;
+    private State_template stateTemplate;
+    private Targetset_template targetsetTemplate;
+    /// <summary>
+    /// 所有参与战斗的战斗单元列表
+    /// </summary>
+    private List<CombatUnit> allCombatUnit = new List<CombatUnit>();
+    /// <summary>
+    /// 先攻队伍id
+    /// </summary>
+    private int initiativeTeamId;
+
+    /// <summary>
+    /// 敌人基础优先权值-来自配置表 ： tb_map_event
+    /// </summary>
+    private int enemyBaseTeamInitiative;
+    /// <summary>
+    /// 能量恢复
+    /// </summary>
+    private float energyRecovery;
+}

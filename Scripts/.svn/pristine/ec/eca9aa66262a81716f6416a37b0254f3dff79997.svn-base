@@ -1,0 +1,18 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace EventCenter
+{
+    /// <summary>
+    /// 事件子系统
+    /// </summary>
+    public enum EventSystemType
+    {
+        None,
+        UI,
+        SceneChange,
+        PreLoadRes
+    }
+}

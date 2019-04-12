@@ -1,0 +1,145 @@
+﻿using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// 探索UI操作
+/// </summary>
+public class UIExploreOperation : MonoBehaviour
+{
+    private void Start()
+    {
+        //自动存档
+        //GameDataManager.SaveGameData(SaveDataType.BeforeExploring);
+        Init();
+    }
+
+    private void Init()
+    {
+        //  ExploreSystem.Instance.SelectMap(10001);
+        exploreCamera = transform.Find("ExploreCamera").GetComponent<Camera>();
+        exploreCamera.tag = "MainCamera";
+        //
+        transform.Find("Popup").gameObject.AddComponent<UIExplorePopupManager>().Init();
+        //
+        explore = transform.Find("UI").gameObject.AddComponent<UIExplore>();
+        explore.OnBack = OnCallClickBack;
+        explore.OnClickCombat = OnCallClickCombat;
+        explore.Init();
+        //
+        if (ScriptSystem.Instance.ScriptPhase == ScriptPhase.Front)
+        {
+            List<CombatUnit> _combatUnits = new List<CombatUnit>();
+            int index = 0;
+            foreach (KeyValuePair<int, CharAttribute> item in CharSystem.Instance.CharAttributeList)
+            {
+                if (index >= 4)
+                {
+                    break;
+                }
+
+                _combatUnits.Add(new CombatUnit(item.Value, index));
+                index++;
+            }
+            TeamSystem.Instance.SetCharList(_combatUnits);
+            OnCallClickStart();
+            //
+            (UIPanelManager.Instance.GetUiPanelBehaviour<LodingPanel>() as LodingPanel).Close();
+            return;
+        }
+        //ResourceLoadUtil.LoadSelectCharModule(LoadSelectCharOk);
+        selectCharInfo = ResourceLoadUtil.LoadSelectCharModule();
+        selectCharInfo.OnBack = OnCallClickBack;
+        selectCharInfo.OnStart = OnCallClickStart;
+        selectCharInfo.OnStart1 = OnCallClickStart1;
+        selectCharInfo.OpenUI();
+    }
+
+
+    private void LoadSelectCharOk(UISelectCharInfo info)
+    {
+        selectCharInfo = info;
+        selectCharInfo.OnBack = OnCallClickBack;
+        selectCharInfo.OnStart = OnCallClickStart;
+        selectCharInfo.OnStart1 = OnCallClickStart1;
+        selectCharInfo.OpenUI();
+    }
+
+    private void OnCallClickCombat()
+    {
+        LoadCombatModule();
+        combatUiOperation.Init(false, sizeValue, exploreCamera);
+    }
+
+    /// <summary>
+    /// 加载战斗模块
+    /// </summary>
+    private void LoadCombatModule()
+    {
+        combatUiOperation = ResourceLoadUtil.LoadCombatModule();
+    }
+
+    private void OnCallClickBack()
+    {
+        SceneManager.Instance.BackToUIScene();
+        DestroyImmediate(gameObject);
+    }
+    private void OnCallClickStart()
+    {
+        if (ScriptSystem.Instance.ScriptPhase == ScriptPhase.Front)
+        {
+            explore.sizeValue = sizeValue;
+            explore.aspdValue = aspdValue;
+            explore.xValue = xValue;
+            explore.x1Value = x1Value;
+        }
+        FortSystem.Instance.CreateExplore(testValues);
+        explore.OnClickStart();
+        if (selectCharInfo != null)
+        {
+            DestroyImmediate(selectCharInfo.gameObject);
+        }
+    }
+    private void OnCallClickStart1(object param)
+    {
+        float[] obj = param as float[];
+        sizeValue = obj[0];
+        explore.sizeValue = sizeValue;
+        explore.aspdValue = obj[1];
+        explore.xValue = obj[2];
+        explore.x1Value = obj[3];
+
+        testValues.Clear();
+        testValues.Add((int)obj[4]);
+        testValues.Add((int)obj[5]);
+        testValues.Add((int)obj[6]);
+        testValues.Add((int)obj[7]);
+        testValues.Add((int)obj[8]);
+        testValues.Add((int)obj[9]);
+    }
+
+
+    private List<int> testValues = new List<int>();
+
+    private void OnDestroy()
+    {
+        if (combatUiOperation != null)
+        {
+            DestroyImmediate(combatUiOperation.gameObject);
+        }
+        if (selectCharInfo != null)
+        {
+            DestroyImmediate(selectCharInfo.gameObject);
+        }
+
+    }
+
+    //
+    private readonly float aspdValue = 8;
+    private readonly float xValue = 400;
+    private readonly float x1Value = 400;
+    private Camera exploreCamera;
+    private float sizeValue = 36;
+    private UIExplore explore;
+    private UICombatUIOperation combatUiOperation;
+    private UISelectCharInfo selectCharInfo;
+}

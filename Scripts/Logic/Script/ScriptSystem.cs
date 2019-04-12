@@ -1,0 +1,323 @@
+﻿using System;
+using System.Collections.Generic;
+using GameEventDispose;
+using UnityEngine;
+//
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+/// <summary>
+/// 剧本基础
+/// </summary>
+public abstract class ScriptBase: IGameData
+{
+    public abstract void Init();
+
+    public abstract void ReadData(string parentPath = null);
+
+    public abstract void SaveData(string parentPath = null);
+}
+
+
+/// <summary>
+/// 剧本系统
+/// </summary>
+public sealed class ScriptSystem: ScriptBase, IGameModule
+{
+    public static ScriptSystem Instance { get { return instance; } }
+    //
+    public int Gold
+    {
+        get { return (int)gold; }
+    }
+
+    public float Mana
+    {
+        get { return (int)mana; }
+    }
+
+    public int ScriptId
+    {
+        get { return scriptID; }
+    }
+
+    public Script_template ScriptTemplate
+    {
+        get { return scriptTemplate; }
+    }
+
+    public ScriptPhase ScriptPhase { get { return scriptPhase; } }
+
+    public BuildingTypeIndex BuildingIndex { get { return buildingIndex; } }
+
+    /// <summary>
+    /// 构建剧本
+    /// </summary>
+    public ScriptSystem(int _scriptID,float _initTime = 0,int _directoryIndex = 0,bool _isNewCreate = true)
+    {
+        instance = this;
+        //
+        scriptID = _scriptID;
+        directoryIndex = _directoryIndex;
+        filePath = String.Format(scriptID + "/" + directoryIndex + "/");
+        scriptTemplate = Script_templateConfig.GetScript_template(scriptID);
+        //
+        GameModules.AddModule(ModuleName.scriptSystem,instance);
+        //
+        gameDatas = new List<ScriptBase>
+        {
+            new ScriptTimeSystem(_isNewCreate,_initTime),
+            new ItemSystem(),
+            new CharSystem(),
+            new BuildingSystem(),
+            new TeamSystem(),
+            new FortSystem(),
+            new BountySystem(),
+            new ExpeditionSystem(),
+            new CycleInvasionSystem(),
+        };
+        //
+        if(!_isNewCreate) ReadData();
+        //
+        if(scriptData == null) scriptData = new ScriptData();
+        //存档数据
+        gold = scriptData.gold;
+        mana = scriptData.mana;
+        scriptPhase = _isNewCreate ? ScriptPhase.Front : ScriptPhase.Normal;
+        //测试
+        //#if UNITY_EDITOR
+        // scriptPhase = ScriptPhase.Normal;
+        //#endif
+        scriptPhase = ScriptPhase.Normal;
+        buildingIndex = (BuildingTypeIndex)scriptData.buildingIndex;
+        //初始化
+        Init();
+        // SaveData();
+    }
+
+    /// <summary>
+    /// 添加金币
+    /// </summary>
+    /// <param name="_num"></param>
+    public void AddGold(int _num)
+    {
+        gold += _num;
+        EventDispatcher.Instance.SystemEvent.DispatchEvent(EventId.SystemEvent,GameSystemEventType.Gold);
+    }
+    /// <summary>
+    /// 减少金币
+    /// </summary>
+    /// <param name="_num"></param>
+    public void SubGold(int _num)
+    {
+        gold -= _num;
+        gold = Math.Max(0,gold);
+        EventDispatcher.Instance.SystemEvent.DispatchEvent(EventId.SystemEvent,GameSystemEventType.Gold);
+    }
+
+    /// <summary>
+    /// 添加魔力
+    /// </summary>
+    /// <param name="_num"></param>
+    public void AddMana(int _num)
+    {
+        mana += _num;
+        EventDispatcher.Instance.SystemEvent.DispatchEvent(EventId.SystemEvent,GameSystemEventType.Mana);
+    }
+    /// <summary>
+    /// 减少魔力
+    /// </summary>
+    /// <param name="_num"></param>
+    public void SubMana(float _num)
+    {
+        mana -= _num;
+        mana = Math.Max(0,mana);
+        EventDispatcher.Instance.SystemEvent.DispatchEvent(EventId.SystemEvent,GameSystemEventType.Mana);
+    }
+    /// <summary>
+    /// 设置剧本阶段
+    /// </summary>
+    /// <param name="phase"></param>
+    public void SetScriptPhase(ScriptPhase phase)
+    {
+        scriptPhase = phase;
+    }
+
+    public bool HaveInRoom(int roomType)
+    {
+        return true;
+        return scriptData.haveInRoomList.Contains(roomType);
+    }
+
+    public void AddHaveInRoom(int roomType)
+    {
+        if(!HaveInRoom(roomType))
+            scriptData.haveInRoomList.Add(roomType);
+    }
+
+    public bool HasPlay(int id)
+    {
+        return scriptData.m_havePlayMapTypeList.Contains(id);
+    }
+
+    public void AddMapTypeId(int id)
+    {
+        if(!scriptData.m_havePlayMapTypeList.Contains(id))
+            scriptData.m_havePlayMapTypeList.Add(id);
+    }
+
+    /// <summary>
+    /// 更新建筑索引
+    /// </summary>
+    /// <param name="index"></param>
+    public void UpdateBuildingIndex(BuildingTypeIndex index)
+    {
+        buildingIndex = index;
+    }
+
+    public override void SaveData(string parentPath = null)
+    {
+        if(parentPath == null) parentPath = filePath;
+        scriptData.scriptPhase = scriptPhase;
+        scriptData.mana = mana;
+        scriptData.scriptID = scriptID;
+        scriptData.gold = gold;
+        scriptData.scriptTime = ScriptTimeSystem.Instance.Second;
+        scriptData.directoryIndex = directoryIndex;
+        scriptData.buildingIndex = (int)buildingIndex;
+        //剧本存档
+        GameDataManager.SaveData(parentPath,ScriptFileName,scriptData);
+        //剧本时间
+        ScriptTimeSystem.Instance.SaveData(parentPath);
+        //角色
+        CharSystem.Instance.SaveData(parentPath);
+        //物品
+        ItemSystem.Instance.SaveData(parentPath);
+        //建筑存档
+        BuildingSystem.Instance.SaveData(parentPath);
+        //悬赏存档
+        BountySystem.Instance.SaveData(parentPath);
+        //要塞存档
+        FortSystem.Instance.SaveData(parentPath);
+        //远征存档
+        ExpeditionSystem.Instance.SaveData(parentPath);
+        //入侵存档
+        CycleInvasionSystem.Instance.SaveData(parentPath);
+        //
+#if UNITY_EDITOR
+        AssetDatabase.Refresh();
+#endif
+    }
+
+    public override void ReadData(string parentPath = null)
+    {
+        if(parentPath == null) parentPath = filePath;
+        //剧本读档
+        scriptData = GameDataManager.ReadData<ScriptData>(parentPath + ScriptFileName) as ScriptData;
+        //剧本子类读档
+        foreach(var item in gameDatas)
+        {
+            item.ReadData(parentPath);
+        }
+    }
+
+    public override void Init()
+    {
+        foreach(var item in gameDatas)
+        {
+            item.Init();
+        }
+    }
+
+    #region 重新接口
+    public void BeforeStartModule()
+    {
+
+    }
+
+    public void StartModule()
+    {
+
+    }
+
+    public void AfterStartModule()
+    {
+
+    }
+
+    public void BeforeStopModule()
+    {
+
+    }
+
+    public void StopModule()
+    {
+
+    }
+
+    public void AfterStopModule()
+    {
+
+    }
+
+    public void BeforeUpdateModule()
+    {
+        if(scriptPhase == ScriptPhase.Front) return;
+        //计时
+        ScriptTimeSystem.Instance.Timing(Time.deltaTime);
+    }
+
+    public void UpdateModule()
+    {
+
+    }
+
+    public void AfterUpdateModule()
+    {
+
+    }
+
+    public void OnFreeScene()
+    {
+
+    }
+    #endregion
+
+
+    private int scriptID;
+    private float gold;
+    private float mana;
+    private ScriptPhase scriptPhase;
+    //
+    private static ScriptSystem instance;
+    //
+    private Script_template scriptTemplate;
+    //
+    private const string ScriptFileName = "Script";
+    private string filePath;
+    //
+    private ScriptData scriptData;
+    private List<ScriptData> scriptDatas;
+    //
+    private List<ScriptBase> gameDatas;
+    //目录索引
+    private int directoryIndex;
+
+    private BuildingTypeIndex buildingIndex;
+}
+
+/// <summary>
+/// 剧本阶段
+/// </summary>
+public enum ScriptPhase
+{
+    /// <summary>
+    /// 前置期
+    /// </summary>
+    Front = 1,
+    /// <summary>
+    /// 正常期
+    /// </summary>
+    Normal = 2,
+}

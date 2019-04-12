@@ -1,0 +1,40 @@
+﻿using UnityEngine;
+using UnityEngine.UI;
+
+public class UIMapExploreFinish : MonoBehaviour
+{
+    public delegate void CallBack();
+
+    public CallBack OnConfirm;
+
+    private Button confirmButton;
+    //
+    private bool isFirst;
+
+    public void Show()
+    {
+        Init();
+        gameObject.SetActive(true);
+    }
+
+    private void Init()
+    {
+        if (isFirst)return;
+        //
+        confirmButton = transform.Find("Confirm").GetComponent<Button>();
+        confirmButton.onClick.AddListener(OnClickConfirm);
+        //
+        isFirst = true;
+
+    }
+
+
+    private void OnClickConfirm()
+    {
+        gameObject.SetActive(false);
+        if (OnConfirm != null)
+        {
+            OnConfirm();
+        }
+    }
+}

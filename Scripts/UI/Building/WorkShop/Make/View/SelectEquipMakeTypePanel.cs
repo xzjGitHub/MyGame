@@ -1,0 +1,162 @@
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace WorkShop.EquipMake.View
+{
+    public class SelectEquipMakeTypePanel: UIPanelBehaviour
+    {
+        private GameObject m_curentObj;
+        private GameObject m_prefab;
+        private GameObject m_type;
+        private Transform m_parent;
+
+        private MakeType m_clickType = MakeType.None;
+        private int m_id;
+
+        private Action<MakeType,int> m_callBack;
+
+        private Dictionary<int,GameObject> m_dict = new Dictionary<int,GameObject>();
+
+        protected override void OnAwake()
+        {
+            m_prefab = transform.Find("Parent/Item").gameObject;
+            m_prefab.SetActive(false);
+            m_type = transform.Find("Parent/Type").gameObject;
+            m_type.SetActive(false);
+            m_parent = transform.Find("Parent/Grid");
+
+            Utility.AddButtonListener(transform.Find("SureBtn/Btn"),ClickSure);
+            Utility.AddButtonListener(transform.Find("Back/Btn"),ClickCancel);
+
+            // UIPanelManager.Instance.UpdateVagueShow(true);
+        }
+
+
+        protected override void OnHide()
+        {
+            if(m_dict.ContainsKey(m_id))
+            {
+                m_dict[m_id].SetActive(false);
+            }
+            m_id = -1;
+            m_clickType = MakeType.None;
+
+            //UIPanelManager.Instance.UpdateVagueShow(false);
+        }
+
+
+        protected override void OnReactive()
+        {
+            //UIPanelManager.Instance.UpdateVagueShow(true);
+        }
+
+        public void UpdateInfo(MakeType makeType,int forgeId,Action<MakeType,int> action)
+        {
+            m_callBack = action;
+
+            if(m_dict.Count == 0)
+            {
+                InitList();
+            }
+            if(forgeId != -1)
+                ClickItem(forgeId,makeType);
+        }
+
+        private void InitList()
+        {
+            bool hasClick = false;
+            Dictionary<MakeType,List<int>> dict = ControllerCenter.Instance.EquipMakeController.m_dict;
+            foreach(var item in dict)
+            {
+                GameObject typeObj = GameObjectPool.Instance.GetObject(
+                    StringDefine.ObjectPooItemKey.EquipMakeType,m_type);
+                Utility.SetParent(typeObj,m_parent);
+                MakeType makeType = item.Key;
+                typeObj.transform.Find("Name").GetComponent<Text>().text = GetTypeName(makeType);
+                Transform parent = typeObj.transform.Find("Grid");
+                for(int i = 0; i < item.Value.Count; i++)
+                {
+                    GameObject temp = GameObjectPool.Instance.GetObject(
+                    StringDefine.ObjectPooItemKey.EquipMakeItem,m_prefab);
+                    Utility.SetParent(temp,parent);
+
+                    int id = item.Value[i];
+                    Forge_config forge = Forge_configConfig.GetForge_config(id);
+                    Image icon = temp.transform.Find("Icon").GetComponent<Image>();
+                    icon.sprite = ResourceLoadUtil.LoadSprite(ResourceType.EquipTypeIcon,forge.typeIcon);
+                    icon.SetNativeSize();
+                    temp.transform.Find("Name").GetComponent<Text>().text = forge.typeName;
+                    GameObject select = temp.transform.Find("Select").gameObject;
+                    select.SetActive(false);
+                    Utility.AddButtonListener(temp.transform.Find("Bg"),() => ClickItem(id,makeType));
+
+                    m_dict.Add(id,select);
+
+                    if(!hasClick)
+                    {
+                        ClickItem(id,makeType);
+                        hasClick = true;
+                    }
+                }
+            }
+        }
+
+        private string GetTypeName(MakeType makeType)
+        {
+            switch(makeType)
+            {
+                case MakeType.Wuqi:
+                    return "武器";
+                case MakeType.FangJu:
+                    return "防具";
+                case MakeType.SiPing:
+                    return "饰品";
+                default:
+                    return "";
+            }
+        }
+
+
+        private void ClickItem(int id,MakeType makeType)
+        {
+            if(m_id == id)
+            {
+                return;
+            }
+            m_clickType = makeType;
+            if(m_dict.ContainsKey(m_id))
+            {
+                m_dict[m_id].SetActive(false);
+            }
+            m_id = id;
+            m_dict[m_id].SetActive(true);
+        }
+
+        private void ClickSure()
+        {
+            if(m_clickType != MakeType.None && m_id != -1)
+            {
+                if(m_callBack != null)
+                {
+                    m_callBack(m_clickType,m_id);
+                }
+            }
+            UIPanelManager.Instance.Hide<SelectEquipMakeTypePanel>();
+        }
+
+        private void ClickCancel()
+        {
+            UIPanelManager.Instance.Hide<SelectEquipMakeTypePanel>();
+        }
+
+        public void Close()
+        {
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.EquipMakeItem);
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.EquipMakeType);
+            //  UIPanelManager.Instance.UpdateVagueShow(false);
+            UIPanelManager.Instance.Hide<SelectEquipMakeTypePanel>();
+        }
+    }
+}

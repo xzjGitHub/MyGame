@@ -1,0 +1,60 @@
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class CharTrainList: MonoBehaviour
+{
+    private Transform m_parent;
+    private GameObject m_prefab;
+
+    private Dictionary<int,TrainCharItem> m_dict = new Dictionary<int,TrainCharItem>();
+
+    private Action<int> m_clickAction;
+
+    private int m_currentChar;
+
+    public void InitComponent(Action<int> clickAction)
+    {
+        m_parent = transform.Find("Grid");
+        m_prefab = transform.Find("Grid/Item").gameObject;
+        m_prefab.SetActive(false);
+
+        m_clickAction = clickAction;
+    }
+
+    public void InitList(List<TraniCharInfo> list)
+    {
+        for(int i = 0; i < list.Count; i++)
+        {
+            AddChar(list[i]);
+        }
+    }
+
+    public void AddChar(TraniCharInfo traniCharInfo)
+    {
+        GameObject temp = GameObjectPool.Instance.GetObject(StringDefine.ObjectPooItemKey.TrainCharItem,
+            m_prefab,traniCharInfo.CharId.ToString());
+        Utility.SetParent(temp,m_parent);
+
+        TrainCharItem trainCharItem = Utility.RequireComponent<TrainCharItem>(temp);
+        trainCharItem.InitInfo(traniCharInfo,m_clickAction);
+        m_dict[traniCharInfo.CharId] = trainCharItem;
+    }
+
+    public void RemoveChar(int charId)
+    {
+        GameObjectPool.Instance.FreeGameObjectByName(StringDefine.ObjectPooItemKey.TrainCharItem,charId.ToString());
+        m_dict.Remove(charId);
+    }
+
+    public void UpdateSelectShow(int charId,bool show)
+    {
+        if(m_dict.ContainsKey(charId))
+            m_dict[charId].UpdateSlectShow(show);
+    }
+
+    public int GetTrainCharCount()
+    {
+        return m_dict.Count;
+    }
+}

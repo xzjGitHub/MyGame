@@ -1,0 +1,123 @@
+﻿using System.Collections.Generic;
+using MCCombat;
+
+public partial class CombatSystem
+{
+    /// <summary>
+    /// targetSet能否使用
+    /// </summary>
+    /// <returns></returns>
+    private bool IsUseTargetSet(CombatUnit combatUnit, Targetset_template targetset, CSkillInfo info = null)
+    {
+        if (targetset == null)
+        {
+            return false;
+        }
+        //检测技能使用次数
+        if (targetset.castCountReq != 0)
+        {
+            if (info == null)
+            {
+                return false;
+            }
+
+            if (info.UseCount < targetset.castCountReq)
+            {
+                return false;
+            }
+        }
+        //targetSet现在具有生效的最小角色等级需求，读自targetSet_termplate.charLevelReq；角色的等级必须 >= 该等级时
+        if (combatUnit.charAttribute.charLevel < targetset.charLevelReq)
+        {
+            return false;
+        }
+        // 
+        //检测stateReq
+        if (targetset.stateReq != 0)
+        {
+            if (combatUnit.States.Find(a => a.stateID == targetset.stateReq && a.duration > 0) == null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+        ////检测属性几率
+        //if (targetset.activateControl == null)
+        //{
+        //    return true;
+        //}
+
+        //object value = CombatSystemTools.GetPropertyValue(combatUnit.charAttribute, targetset.activateControl);
+        //if (value == null)
+        //{
+        //    return true;
+        //}
+
+        //return RandomBuilder.RandomIndex_Chances(new List<float> { (float)value }) == 0;
+    }
+
+    /// <summary>
+    /// 得到能生效的列表
+    /// </summary>
+    private List<int> GetUseTargetSets(List<int> targetsets, CombatUnit combatUnit, CSkillInfo info)
+    {
+        List<int> list = new List<int>();
+        int count = targetsets.Count;
+        //得到了能生效的列表
+        for (int i = 0; i < count; i++)
+        {
+            targetsetTemplate = Targetset_templateConfig.GetTargetset_template(combatskillTemplate.targetSetList[i]);
+            if (i == 0 || IsUseTargetSet(combatUnit, targetsetTemplate, info))
+            {
+                list.Add(targetsets[i]);
+            }
+        }
+        //反向生效
+        //for (int i = count; i >= 0; i--)
+        //{
+        //    targetsetTemplate = Targetset_templateConfig.GetTargetset_template(combatskillTemplate.targetSetList[i]);
+        //    if (i == 0 || IsUseTargetSet(combatUnit, targetsetTemplate, info))
+        //    {
+        //        list.Add(targetsets[i]);
+        //    }
+        //}
+        return list;
+    }
+    /// <summary>
+    /// 得到targetset的ActionIndex列表
+    /// </summary>
+    private List<int> GetTargetsetActionIndexs(List<int> targetsetIds)
+    {
+        List<int> list = new List<int>();
+        int temp = 0;
+        for (int i = 0; i < targetsetIds.Count; i++)
+        {
+            targetsetTemplate = Targetset_templateConfig.GetTargetset_template(targetsetIds[i]);
+            if (targetsetTemplate == null)
+            {
+                LogHelperLSK.Log(targetsetIds[i] + "不存在");
+                return list;
+            }
+            if (targetsetTemplate.isAnimated == 1)
+            {
+                list.Add(temp);
+                temp++;
+            }
+            else
+            {
+                list.Add(-1);
+            }
+        }
+        //反向生效
+        //for (int i = 0; i < list.Count; i++)
+        //{
+        //    if (list[i] != -1)
+        //    {
+        //        temp--;
+        //        list[i] = temp;
+        //    }
+        //}
+        return list;
+    }
+}

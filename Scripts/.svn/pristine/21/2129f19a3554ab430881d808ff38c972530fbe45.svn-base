@@ -1,0 +1,39 @@
+﻿using System;
+using UnityEngine;
+
+namespace Comomon.ItemList
+{
+    public class NewItem: BaseItem
+    {
+        public void InitInfo(ItemAttribute attr,Action<ItemAttribute,GameObject> clickCallBack)
+        {
+            m_attr = attr;
+            m_clickCallBackObj = clickCallBack;
+
+            InitComponent();
+            InitShow(attr);
+        }
+
+        public void InitInfo(ItemAttribute attr,Action<ItemAttribute> clickCallBack)
+        {
+            m_attr = attr;
+            m_clickCallBack = clickCallBack;
+
+            InitComponent();
+            InitShow(attr);
+        }
+
+        private void InitShow(ItemAttribute attr)
+        {
+            Item_instance item = Item_instanceConfig.GetItemInstance(attr.instanceID);
+            m_icon.sprite = ResourceLoadUtil.LoadSprite(ResourceType.ItemIcon,
+                item.itemIcon.Count > 0 ? item.itemIcon[0] : "");
+            //m_quility.sprite = ResourceLoadUtil.LoadSprite(ResourceType.ItemQuility,
+            //    attr.GetItemData().itemQuality.ToString());
+            if(attr.sum > 1)
+                m_num.text = attr.sum.ToString();
+            m_num.gameObject.SetActive(attr.sum > 1);
+           // m_select.SetActive(false);
+        }
+    }
+}

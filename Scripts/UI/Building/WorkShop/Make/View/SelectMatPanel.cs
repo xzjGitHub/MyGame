@@ -1,0 +1,119 @@
+﻿using System.Collections.Generic;
+using Comomon.ItemList;
+using UnityEngine;
+using System;
+
+namespace WorkShop.EquipMake.View
+{
+    public class SelectMatPanel: UIPanelBehaviour
+    {
+        private GameObject m_leftGameObj;
+        private GameObject m_zcImage;
+        private GameObject m_fcImage;
+
+        private NewItemList m_itemList;
+        private ItemAttribute m_attr;
+        private ItemTipInfo m_itemInfo;
+
+        private Action<ItemAttribute> m_resultCallBack;
+
+        protected override void OnHide()
+        {
+            Free();
+        }
+
+        public void InitComponent(Action<ItemAttribute> callBack)
+        {
+            m_resultCallBack = callBack;
+
+            m_zcImage = transform.Find("Right/Tag/Tag/Zc").gameObject;
+            m_fcImage = transform.Find("Right/Tag/Tag/Fc").gameObject;
+
+            m_itemList = Utility.RequireComponent<NewItemList>(transform.Find("Right/NewItemList").gameObject);
+            m_itemList.InitComponent();
+
+            m_leftGameObj = transform.Find("Left").gameObject;
+            m_itemInfo = Utility.RequireComponent<ItemTipInfo>(m_leftGameObj.transform.Find("ItemDetialInfo").gameObject);
+            m_leftGameObj.SetActive(false);
+
+            Utility.AddButtonListener(transform.Find("Left/SureBtn/Btn"),ClickSure);
+            Utility.AddButtonListener(transform.Find("Back/Btn"),ClickBack);
+        }
+
+        public void UpdateInfo(ItemAttribute attr,ItemType itemType,List<ItemAttribute> list)
+        {
+            Free();
+
+            m_attr = attr;
+            m_zcImage.SetActive(itemType==ItemType.ZhuCai);
+            m_fcImage.SetActive(itemType == ItemType.FuCai);
+
+            m_itemList.InitListList(list,ClickItem,ShowEndCallBack);
+
+            m_leftGameObj.SetActive(false);
+
+            UpdateInfo();
+        }
+
+        private void ShowEndCallBack()
+        {
+            if(m_attr != null)
+            {
+                m_itemList.UpdateSelectShow(m_attr.itemID,true);
+            }
+        }
+
+        private void ClickItem(ItemAttribute item)
+        {
+            if(m_attr != null)
+            {
+                if(m_attr.itemID == item.itemID)
+                {
+                    m_itemList.UpdateSelectShow(m_attr.itemID,false);
+                    m_attr = null;
+                }
+                else
+                {
+                    m_itemList.UpdateSelectShow(m_attr.itemID,false);
+                    m_attr = item;
+                    m_itemList.UpdateSelectShow(m_attr.itemID,true);
+                }
+            }
+            else
+            {
+                m_attr = item;
+                m_itemList.UpdateSelectShow(m_attr.itemID,true);
+            }
+            UpdateInfo();
+        }
+
+        private void UpdateInfo()
+        {
+            m_leftGameObj.SetActive(m_attr != null);
+            if(m_attr != null)
+            {
+                Item_instance item = Item_instanceConfig.GetItemInstance(m_attr.instanceID);
+                m_itemInfo.UpdateInfo(m_attr.GetItemData());
+            }
+        }
+
+        private void ClickSure()
+        {
+            if(m_resultCallBack != null)
+            {
+                m_resultCallBack(m_attr);
+            }
+            UIPanelManager.Instance.Hide<SelectMatPanel>();
+        }
+
+        private void ClickBack()
+        {
+            UIPanelManager.Instance.Hide<SelectMatPanel>();
+        }
+
+        private void Free()
+        {
+            m_itemList.Free();
+        }
+    }
+}

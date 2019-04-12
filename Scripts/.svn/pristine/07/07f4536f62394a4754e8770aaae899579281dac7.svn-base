@@ -1,0 +1,183 @@
+﻿using GameEventDispose;
+using System.Collections.Generic;
+
+/// <summary>
+/// 要塞系统
+/// </summary>
+public class FortSystem : ScriptBase
+{
+    public static FortSystem Instance { get { return instance; } }
+
+    public List<Zone> NowZones { get { return _nowZones; } }
+
+    public List<int> FindForts { get { return findForts; } }
+
+    public List<int> UnlockForts { get { return unlockForts; } }
+
+    public ExploreMap NowEMap { get { return nowOperationEM; } }
+
+    public Zone NewZone { get { return _nowZones.Find(a => a.ZoneState == ZoneState.New); } }
+
+    public FortSystem()
+    {
+        instance = this;
+        //
+        EventDispatcher.Instance.ScriptTimeEvent.AddEventListener<ScriptTimeUpdateType, object>(EventId.ScriptTimeEvent, OnScriptTimeUpdateEvent);
+    }
+
+    /// <summary>
+    /// 终结地图探索
+    /// </summary>
+    public bool FinishMapExplore(ExploreMap exploreMap, float nowTime, out int newFortID, out int newMapID)
+    {
+        newFortID = -1;
+        newMapID = -1;
+        Zone zone = _nowZones.Find(a => a.ZoneId == exploreMap.ZoneId);
+        //
+        bool isUpdateShow = false;
+        int maxNum = (int)RandomBuilder.RandomMaxFactor;
+        //检测新探索地图
+        List<List<int>> list = exploreMap.MapTemplate.disMapSet;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (exploreMap.FinishProgress < list[i][0])
+            {
+                continue;
+            }
+            //可以选中
+            if (RandomBuilder.RandomNum(maxNum) <= list[i][1])
+            {
+                newMapID = RandomBuilder.RandomList(1, exploreMap.MapTemplate.disMapChance[i])[0];
+                //添加探索地图
+                zone.AddExploreMap(newMapID, (int)nowTime);
+                isUpdateShow = true;
+            }
+            break;
+        }
+
+        //可以选中
+        newFortID = exploreMap.MapTemplate.unlockFort;
+        fort_Template = Fort_templateConfig.GetFort_template(newFortID);
+        if (fort_Template != null)
+        {
+            _nowZones.Add(new Zone(fort_Template.unlockZone, (FortType)fort_Template.fortType));
+            isUpdateShow = true;
+        }
+        //todo unlockFort已修改
+        //检测发现远征点
+        //list = exploreMap.MapTemplate.unlockFort;
+        //foreach (var item in list)
+        //{
+        //    if (Math.Min(maxNum, exploreMap.FinishProgress * item[2]) < item[1]) continue;
+        //    //可以选中
+        //    newFortID = item[0];
+        //    fort_Template = Fort_templateConfig.GetFort_template(newFortID);
+        //    if (fort_Template != null)
+        //    {
+        //        _nowZones.Add(new Zone(fort_Template.unlockZone, (FortType)fort_Template.fortType));
+        //        isUpdateShow = true;
+        //    }
+
+        //    break;
+        //}
+        //移出该地图
+        zone.RemoveExploreMap(exploreMap.PosIndex);
+        return isUpdateShow;
+    }
+
+    /// <summary>
+    /// 准备探索
+    /// </summary>
+    public void PrepareExplore(int mapID)
+    {
+        nowOperationEM = NewZone.GetMap(mapID);
+    }
+    /// <summary>
+    /// 准备探索
+    /// </summary>
+    public void PrepareExplore(ExploreMap exploreMap)
+    {
+        nowOperationEM = exploreMap;
+    }
+    /// <summary>
+    /// 创建探索
+    /// </summary>
+    public void CreateExplore(List<int> testValue = null)
+    {
+        new ExploreSystem(nowOperationEM, testValue);
+    }
+
+    /// <summary>
+    /// 剧本时间更新事件
+    /// </summary>
+    private void OnScriptTimeUpdateEvent(ScriptTimeUpdateType arg1, object arg2)
+    {
+        //todo 暂时没有自动刷新机制
+        return;
+        if (arg1 != ScriptTimeUpdateType.Day)
+        {
+            return;
+        }
+
+        float time = (float)arg2;
+
+        foreach (Zone item in _nowZones)
+        {
+            // item.RefreshMaps(time);
+            //
+            //  item.RefreshZone(time);
+        }
+    }
+
+    public override void SaveData(string parentPath)
+    {
+        this.parentPath = parentPath;
+        _fortSystemData.zorts.Clear();
+        foreach (Zone item in _nowZones)
+        {
+            _fortSystemData.zorts.Add(item.GetFortData());
+        }
+        _fortSystemData.findForts = findForts;
+        _fortSystemData.unlockForts = unlockForts;
+        //
+        GameDataManager.SaveData(parentPath, ZoneSystemPath, _fortSystemData);
+    }
+
+    public override void ReadData(string parentPath)
+    {
+        this.parentPath = parentPath;
+        _fortSystemData = GameDataManager.ReadData<HegemonySystemData>(parentPath + ZoneSystemPath) as FortSystemData;
+    }
+
+    public override void Init()
+    {
+        if (_fortSystemData == null)
+        {
+            _fortSystemData = new FortSystemData();
+            //添加主城
+            _nowZones.Add(new Zone(Game_configConfig.GetGame_Config().initialZone, FortType.Base, TimeUtil.GetPlayDays()));
+            return;
+        }
+        //
+        foreach (ZoneData item in _fortSystemData.zorts)
+        {
+            _nowZones.Add(new Zone(item));
+        }
+    }
+
+    //
+    private static FortSystem instance;
+    //现在的要塞列表
+    private List<Zone> _nowZones = new List<Zone>();
+    private readonly List<int> findForts = new List<int>();
+    private readonly List<int> unlockForts = new List<int>();
+    //父路径
+    private string parentPath;
+    private const string ZoneSystemPath = "FortSystemData";
+    //
+    private Fort_template fort_Template;
+    //
+    private FortSystemData _fortSystemData;
+    private ExploreMap nowOperationEM;
+
+}

@@ -1,0 +1,789 @@
+using Spine;
+using Spine.Unity;
+using Spine.Unity.Modules.AttachmentTools;
+using System.Collections.Generic;
+using UnityEngine;
+using AnimationState = Spine.AnimationState;
+
+/// <summary>
+/// 骨胳工具
+/// </summary>
+public class SkeletonTool
+{
+    public const string HpBoneName = "xuetiao";
+    public const string HitBoneName = "onHit";
+    public const string CharCenterName = "charCenter";
+    public const string WeaponName = "weapon";
+    public const string RootName = "root";
+    public const string OnHit1Name = "forOnhit1";
+    public const string OnHit2Name = "forOnhit2";
+
+    /// <summary>
+    /// 获得角色骨骼位置
+    /// </summary>
+    /// <param name="uiChar"></param>
+    /// <param name="boneName"></param>
+    /// <returns></returns>
+    public static Vector3 GetCharBonePos(CharSkeletonOperation uiChar, string boneName)
+    {
+        switch (boneName)
+        {
+            case HpBoneName:
+                return uiChar.HpPos;
+            case HitBoneName:
+                return uiChar.HitPos;
+            case CharCenterName:
+                return uiChar.CharCenterPos;
+            case WeaponName:
+                return uiChar.WeaponPos;
+            case RootName:
+                return uiChar.RootPos;
+            case OnHit1Name:
+                return uiChar.ForOnhit1;
+            case OnHit2Name:
+                return uiChar.ForOnhit2;
+            default:
+                return uiChar.RootPos;
+        }
+    }
+
+    /// <summary>
+    /// 检查角色位置
+    /// </summary>
+    public static bool IsCheckMove(Transform transform, bool isLeft, SkillAnimationPosType type, float CSYS_x, float CSYS_y, int targetIndex, out Vector3 endPos, out int sortingOrder, List<float> erCSYS = null)
+    {
+        sortingOrder = 0;
+        endPos = Vector3.zero;
+        bool isMove = false;
+        switch (type)
+        {
+            case SkillAnimationPosType.NearEnemy:
+                endPos = -transform.localPosition + Vector3.up * 19f;
+                endPos += CharModuleOtherUIPos(targetIndex, isLeft);
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y);
+                sortingOrder = GetSkeletonSortingOrder(!isLeft, targetIndex) + AddSortingOrde;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.EnemyMiddle:
+                endPos = -transform.localPosition;
+                endPos += CharModuleOtherUIPos(-1, isLeft);
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y);
+                sortingOrder = MiddleSortingOrde;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.NearOneself:
+                endPos = -transform.localPosition;
+                endPos += CharModuleOneselfUIPos(targetIndex, isLeft);
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y);
+                sortingOrder = GetSkeletonSortingOrder(!isLeft, targetIndex) + AddSortingOrde;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.OneselfMiddle:
+                endPos = -transform.localPosition;
+                endPos += CharModuleOneselfUIPos(-1, isLeft);
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y);
+                sortingOrder = MiddleSortingOrde;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.Inplace:
+                endPos = transform.localPosition;
+                break;
+            case SkillAnimationPosType.Middle:
+                endPos = screenMiddlePos;
+                endPos -= transform.localPosition;
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y);
+                sortingOrder = MiddleSortingOrde;
+                isMove = true;
+                break;
+        }
+        if (erCSYS == null)
+        {
+            return isMove;
+        }
+        endPos = GameTools.AmendVector(endPos, erCSYS);
+        return isMove;
+    }
+
+    /// <summary>
+    /// 检查特效位置
+    /// </summary>
+    public static bool IsCheckEffectMove(Transform carrier, bool isLeft, SkillAnimationPosType type, float CSYS_x, float CSYS_y, UICharUnit hitChar, UICharUnit atkChar, string origin, float localScale, out Vector3 endPos, out int sortingOrder, List<float> erCSYS = null)
+    {
+        sortingOrder = 0;
+        endPos = Vector3.zero;
+        bool isMove = false;
+        switch (type)
+        {
+            case SkillAnimationPosType.NearEnemy:
+                if (origin != null || origin.Length > 0)
+                {
+                    endPos = carrier.InverseTransformPoint(hitChar.BonePos(origin));
+                }
+                else
+                {
+                    endPos = -carrier.localPosition + Vector3.up * 19f;
+                    endPos += CharModuleOtherUIPos(hitChar.charIndex, isLeft);
+                }
+
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y, localScale);
+                sortingOrder = hitChar.HitSortingOrder;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.EnemyMiddle:
+                endPos = -carrier.localPosition;
+                endPos += CharModuleOtherUIPos(-1, isLeft);
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y, localScale);
+                sortingOrder = MiddleSortingOrde;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.NearOneself:
+                if (origin != null || origin.Length > 0)
+                {
+                    endPos = carrier.InverseTransformPoint(hitChar.BonePos(origin));
+                }
+                else
+                {
+                    endPos = -carrier.localPosition;
+                    endPos += CharModuleOneselfUIPos(hitChar.charIndex, isLeft);
+                }
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y, localScale);
+                sortingOrder = hitChar.HitSortingOrder;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.OneselfMiddle:
+                endPos = -carrier.localPosition;
+                endPos += CharModuleOneselfUIPos(-1, isLeft);
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y, localScale);
+                sortingOrder = MiddleSortingOrde;
+                isMove = true;
+                break;
+            case SkillAnimationPosType.Inplace:
+                endPos = carrier.localPosition;
+                break;
+            case SkillAnimationPosType.Middle:
+                endPos = Vector3.left * carrier.localPosition.x + Vector3.down * 5f;
+                endPos = GameTools.AmendVector(endPos, CSYS_x, CSYS_y, localScale);
+                sortingOrder = MiddleSortingOrde;
+                isMove = true;
+                break;
+        }
+        if (erCSYS == null)
+        {
+            return isMove;
+        }
+        endPos = GameTools.AmendVector(endPos, erCSYS, localScale);
+        return isMove;
+    }
+    /// <summary>
+    /// 得到当前骨骼层级
+    /// </summary>
+    public static int GetSkeletonSortingOrder(bool isLeft, int index)
+    {
+        switch (index)
+        {
+            case 0:
+                return isLeft ? 10 : 30;
+            case 1:
+                return isLeft ? 30 : 10;
+            case 2:
+                return isLeft ? 20 : 40;
+            case 3:
+                return isLeft ? 40 : 20;
+            default:
+                return isLeft ? 10 : 30;
+        }
+    }
+
+    /// <summary>
+    /// 获得我方角色模型的位置
+    /// </summary>
+    public static Vector3 CharModuleOneselfUIPos(int index, bool isLeft = true)
+    {
+
+        switch (index)
+        {
+            case -1:
+                return isLeft ? LMiddlePos : RMiddlePos;
+            case 0:
+                return isLeft ? LPos1 : RPos1;
+            case 1:
+                return isLeft ? LPos2 : RPos2;
+            case 2:
+                return isLeft ? LPos3 : RPos3;
+            case 3:
+                return isLeft ? LPos4 : RPos4;
+            default:
+                return isLeft ? LMiddlePos : RMiddlePos;
+        }
+    }
+
+    /// <summary>
+    /// 得到战将模型动画状态字符
+    /// </summary>
+    public static string CharModuleActionStr(CharModuleAction type)
+    {
+
+        switch (type)
+        {
+            case CharModuleAction.Default:
+                return string.Empty;
+            case CharModuleAction.Idle:
+                return "Idle";
+            case CharModuleAction.Hurt:
+                return "Hurt";
+            case CharModuleAction.Die:
+                return "Die";
+            case CharModuleAction.Celebrate:
+                return "Celebrate";
+            case CharModuleAction.Run:
+                return "Run";
+            case CharModuleAction.Zhaohuan:
+                return "Zhaohuan";
+            case CharModuleAction.Zhizao:
+                return "Zhizao";
+            case CharModuleAction.Hurt_jitui:
+                return "Hurt_jitui";
+            case CharModuleAction.Atk_chongci:
+                return "Atk_chongci1";
+            case CharModuleAction.Idle_1:
+                return "Idle_1";
+            case CharModuleAction.Fanhui:
+                return "Fanhui";
+            case CharModuleAction.Atk_zhunbei:
+                return "Atk_zhunbei";
+            case CharModuleAction.Buff:
+                return "Buff";
+            case CharModuleAction.Atk_gongji:
+                return "Atk_gongji";
+            case CharModuleAction.Dazhao:
+                return "Dazhao";
+            case CharModuleAction.XiaoZhao1:
+                return "Xiaozhao1";
+            case CharModuleAction.XiaoZhao2:
+                return "Xiaozhao2";
+            case CharModuleAction.XiaoZhao3:
+                return "Xiaozhao3";
+            case CharModuleAction.XiaoZhao4:
+                return "Xiaozhao4";
+            default:
+                return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// 得到战将模型动画状态
+    /// </summary>
+    /// <param name="name">状态字符串</param>
+    /// <returns>返回状态</returns>
+    public static CharModuleAction GetCharModuleState(string name)
+    {
+        switch (name)
+        {
+            case "Default":
+                return CharModuleAction.Default;
+            case "Idle":
+                return CharModuleAction.Idle;
+            case "Hurt":
+                return CharModuleAction.Hurt;
+            case "Hurt_jitui":
+                return CharModuleAction.Hurt_jitui;
+            case "Die":
+                return CharModuleAction.Die;
+            case "Celebrate":
+                return CharModuleAction.Celebrate;
+            case "Run":
+                return CharModuleAction.Run;
+            case "Atk_chongci1":
+                return CharModuleAction.Atk_chongci;
+            case "Zhaohuan":
+                return CharModuleAction.Zhaohuan;
+            case "Zhizao":
+                return CharModuleAction.Zhizao;
+            case "Idle_1":
+                return CharModuleAction.Idle_1;
+            case "Fanhui":
+                return CharModuleAction.Fanhui;
+            case "Atk_zhunbei":
+                return CharModuleAction.Atk_zhunbei;
+            case "Buff":
+                return CharModuleAction.Buff;
+            case "Atk_gongji":
+                return CharModuleAction.Atk_gongji;
+            case "Dazhao":
+                return CharModuleAction.Dazhao;
+            case "Xiaozhao1":
+                return CharModuleAction.XiaoZhao1;
+            case "Xiaozhao2":
+                return CharModuleAction.XiaoZhao2;
+            case "Xiaozhao3":
+                return CharModuleAction.XiaoZhao3;
+            case "Xiaozhao4":
+                return CharModuleAction.XiaoZhao4;
+            default:
+                return CharModuleAction.Default;
+        }
+
+    }
+
+    /// <summary>
+    /// 播放动画
+    /// </summary>
+    public static void PlayCharAnimation(SkeletonAnimation skeleton, CharModuleAction action, AnimationState.TrackEntryDelegate trackentry = null, int trackIndex = 0, float trackTime = 0)
+    {
+        string actionName = CharModuleActionStr(action);
+        if (skeleton.AnimationName == actionName)
+        {
+            return;
+        }
+        skeleton.timeScale = action == CharModuleAction.Run ? 1.3f : 1f;
+        bool _isLoop = GetCharAnimatinoLoop(action);
+        //循环动作不添加回调
+        if (trackentry != null && !_isLoop)
+        {
+            skeleton.state.ClearCompleteStaetEvent();
+            skeleton.state.Complete += trackentry;
+        }
+        AnimationPlay(skeleton, trackIndex, actionName, _isLoop, trackTime);
+    }
+
+    /// <summary>
+    /// 播放动画
+    /// </summary>
+    public static void PlayAnimation(SkeletonAnimation skeleton, string name, bool isLoop = true, float trackTime = 1)
+    {
+        AnimationPlay(skeleton, 0, name, isLoop, 1);
+    }
+    /// <summary>
+    /// 设置骨骼的层
+    /// </summary>
+    /// <param name="skeleton"></param>
+    /// <param name="sortingOrde"></param>
+    /// <param name="layer"></param>
+    public static void SetSkeletonLayer(SkeletonAnimation skeleton, int sortingOrde = 0, string layer = null)
+    {
+        if (skeleton == null)
+        {
+            return;
+        }
+        Renderer renderer = GameTools.GetObjRenderer(skeleton.gameObject);
+        if (renderer == null)
+        {
+            return;
+        }
+        renderer.sortingOrder = sortingOrde;
+        if (layer != null)
+        {
+            renderer.sortingLayerName = layer;
+        }
+
+    }
+    /// <summary>
+    /// 设置骨骼的层
+    /// </summary>
+    public static void SetSkeletonLayer(EffectInfo info)
+    {
+        if (info == null || info.SkeletonAn == null)
+        {
+            return;
+        }
+
+        SetSkeletonLayer(info.SkeletonAn, info.sortingOrde, info.sortingLayer);
+    }
+
+    private static void AnimationPlay(SkeletonAnimation skeleton, int trackIndex, string name, bool isLoop, float trackTime)
+    {
+        // skeleton.state.ClearTracks();
+        //  skeleton.state.SetEmptyAnimation(trackIndex, 0);
+        //  skeleton.skeleton.SetToSetupPose();
+        skeleton.state.SetAnimation(trackIndex, name, isLoop).TrackTime = trackTime / 30f;
+
+        // //   trackIndex = skeleton.state.GetCurrent(0) != null ? 1 : 0;
+        // //  skeleton.state.ClearTrack(trackIndex == 1 ? 0 : 1);
+        // skeleton.state.ClearTracks();
+        //// skeleton.skeleton.SetToSetupPose();
+        // skeleton.state.SetEmptyAnimation(trackIndex, 0);
+        // skeleton.state.SetAnimation(trackIndex, name, isLoop).TrackTime = 1 / 30f;
+    }
+
+
+    /// <summary>
+    /// 创建描边材质球
+    /// </summary>
+    public static Material CreateOutLineMateral(Texture texture = null, object color = null)
+    {
+        return ResourceLoadUtil.LoadRes<Material>("Test/OutLineMateral");
+
+        Material material = new Material(Shader.Find("Custom/UI/OutlineDefault"));
+        if (texture != null)
+        {
+            material.SetTexture("_MainTex", texture);
+        }
+        if (color != null)
+        {
+            material.SetColor("_OutlineColor", (Color)color);
+        }
+        return material;
+    }
+
+    /// <summary>
+    /// 创建Spine
+    /// </summary>
+    public static GameObject CreateSpine(string showStr)
+    {
+        return CreateSpine(new SpineNameInfo(showStr, CharSpineShowPath + showStr + "/"), new GameObject());
+    }
+
+    /// <summary>
+    /// 创建Spine
+    /// </summary>
+    public static GameObject CreateSpine_UI(string showStr)
+    {
+        return CreateSpine_UI(new SpineNameInfo(showStr, CharSpineShowPath + showStr + "/"), new GameObject());
+    }
+
+    /// <summary>
+    /// 创建Spine
+    /// </summary>
+    public static GameObject CreateSpine_UI(SpineNameInfo _info, GameObject _obj, Sprite weaponSpr = null)
+    {
+        SkeletonGraphic sa = _obj.AddComponent<SkeletonGraphic>();
+        sa.skeletonDataAsset = CreateDataAsset(_info);
+        sa.material = new Material(Shader.Find("Spine/SkeletonGraphic (Premultiply Alpha)"));
+        //  sa.calculateNormals = true;
+        sa.skeletonDataAsset.Reset();
+        //  sa.AnimationName = "run";
+        //   sa.loop = true;
+        sa.Initialize(true);
+        //换装
+        //
+        return _obj;
+    }
+
+
+    /// <summary>
+    /// 创建Spine
+    /// </summary>
+    public static GameObject CreateSpine(SpineNameInfo info, GameObject obj, Sprite weaponSpr = null, bool isOutLine = true)
+    {
+        SkeletonAnimation sa = obj.AddComponent<SkeletonAnimation>();
+        sa.skeletonDataAsset = sa.skeletonDataAsset = CreateDataAsset(info, isOutLine);
+        //  sa.calculateNormals = true;
+        sa.skeletonDataAsset.Reset();
+        //  sa.AnimationName = "run";
+        //   sa.loop = true;
+        sa.Initialize(true);
+        //换装
+        if (weaponSpr != null)
+        {
+            SpineReloading(sa, GetSpineSlotStr(SpineSlotType.Weapon), weaponSpr);
+        }
+        //
+        return obj;
+    }
+
+    /// <summary>
+    /// 换装
+    /// </summary>
+    /// <param name="skeletonAnimation">组件</param>
+    /// <param name="slotName">位置名字</param>
+    /// <param name="newSpr">更新的图片</param>
+    public static void SpineReloading(SkeletonAnimation skeletonAnimation, string slotName, Sprite newSpr)
+    {
+        Material sourceMaterial = skeletonAnimation.SkeletonDataAsset.atlasAssets[0].materials[0];
+
+      //  Apply(skeletonAnimation, "default", slotName, newSpr, sourceMaterial);
+
+       // return;
+
+        Skeleton skeleton = skeletonAnimation.Skeleton;
+        Skin customSkin = new Skin("custom skin");
+        //
+        skeleton.SetSkin(customSkin);
+        //查找到slot的数据
+        Slot targetSlot = skeleton.FindSlot(slotName);
+        if (targetSlot == null)
+        {
+            LogHelperLSK.LogError("未找到Slot");
+            return;
+        }
+        //slot的编号
+        int visorSlotIndex = targetSlot.Data.Index;
+        //获得初始的Attachment
+        Attachment templateAttachment = targetSlot.Attachment;
+        if (templateAttachment == null)
+        {
+            return;
+        }
+        //复制初始的Attachment，并加载上新的图片
+        Attachment newAttachment = templateAttachment.GetRemappedClone(newSpr, sourceMaterial);
+        //把复制并替换好资源的Attachment添加到目标slot上
+        customSkin.SetAttachment(visorSlotIndex, templateAttachment.Name, newAttachment);
+        //设置显示新的服装
+        skeleton.SetAttachment(slotName, templateAttachment.Name);
+        // Use the pose from setup pose.
+        skeleton.SetSlotsToSetupPose();
+        // Use the pose in the currently active animation.
+        skeletonAnimation.Update(0);
+    }
+
+    private static void Apply(SkeletonAnimation skeletonAnimation, string templateAttachmentsSkin, string slotName, Sprite newSpr, Material sourceMaterial)
+    {
+        Skeleton skeleton = skeletonAnimation.Skeleton;
+
+        // STEP 0: PREPARE SKINS
+        // Let's prepare a new skin to be our custom skin with equips/customizations. We get a clone so our original skins are unaffected.
+        // This requires that all customizations are done with skin placeholders defined in Spine.
+        Skin customSkin = new Skin("custom skin");
+        // use this if you are not customizing on the default skin.
+        //customSkin = customSkin ?? skeleton.UnshareSkin(true, false, skeletonAnimation.AnimationState); 
+        Skin templateSkin = skeleton.Data.FindSkin(templateAttachmentsSkin);
+
+        // STEP 1: "EQUIP" ITEMS USING SPRITES
+        // STEP 1.1 Find the original/template attachment.
+        // Step 1.2 Get a clone of the original/template attachment.
+        // Step 1.3 Apply the Sprite image to the clone.
+        // Step 1.4 Add the remapped clone to the new custom skin.
+
+        // Let's do this for the visor.
+        // You can access GetAttachment and SetAttachment via string, but caching the slotIndex is faster.
+        int slotIndex = skeleton.FindSlotIndex(slotName);
+        // STEP 1.1
+        Attachment templateAttachment = skeleton.FindSlot(slotName).Attachment;
+        //templateSkin.GetAttachment(slotIndex, slotName);
+        // STEP 1.2 - 1.3
+        Attachment newAttachment = templateAttachment.GetRemappedClone(newSpr, sourceMaterial);
+        // STEP 1.4
+        customSkin.SetAttachment(slotIndex, slotName, newAttachment);
+
+        // customSkin.RemoveAttachment(gunSlotIndex, gunKey); // To remove an item.
+        // customSkin.Clear()
+        // Use skin.Clear() To remove all customizations.
+        // Customizations will fall back to the value in the default skin if it was defined there.
+        // To prevent fallback from happening, make sure the key is not defined in the default skin.
+
+        // STEP 3: APPLY AND CLEAN UP.
+        // Recommended: REPACK THE CUSTOM SKIN TO MINIMIZE DRAW CALLS
+        // 				Repacking requires that you set all source textures/sprites/atlases to be Read/Write enabled in the inspector.
+        // 				Combine all the attachment sources into one skin. Usually this means the default skin and the custom skin.
+        // 				call Skin.GetRepackedSkin to get a cloned skin with cloned attachments that all use one texture.
+        //				Under the hood, this relies on 
+
+        // Just use the custom skin directly.
+        skeleton.SetSkin(customSkin);
+
+        // Use the pose from setup pose.
+        skeleton.SetSlotsToSetupPose();
+        // Use the pose in the currently active animation.
+        skeletonAnimation.Update(0);
+    }
+
+
+
+
+
+
+
+    /// <summary>
+    /// 创建骨骼数据
+    /// </summary>
+    /// <param name="info"></param>
+    /// <param name="mode"></param>
+    /// <returns></returns>
+    private static SkeletonDataAsset CreateDataAsset(SpineNameInfo info, bool isOutLine = true)
+    {
+        //骨骼数据文件
+        SkeletonDataAsset sda = ScriptableObject.CreateInstance<SkeletonDataAsset>();
+        sda.fromAnimation = new string[0];
+        sda.toAnimation = new string[0];
+        sda.duration = new float[0];
+        sda.scale = 0.01f;
+        sda.defaultMix = 0.15f;
+        //资源文件
+        AtlasAsset atlasdata = ScriptableObject.CreateInstance<AtlasAsset>();
+        atlasdata.atlasFile = ResourceLoadUtil.LoadSpineRes<TextAsset>(info.atlasName);
+        //材质
+        Texture _texture = ResourceLoadUtil.LoadSpineRes<Texture>(info.textureName);
+        string shaderName = "Spine/Skeleton";
+        Material _material1 = new Material(Shader.Find(shaderName));
+        _material1.SetTexture("_MainTex", _texture);
+        if (isOutLine)
+        {
+            Material _material2 = new Material(Shader.Find("UIKit/UIImage/UIImage_Static_Outline_Alpha"));
+            atlasdata.materials = new Material[] { _material1, _material2 };
+        }
+        else
+        {
+            atlasdata.materials = new Material[] { _material1, };
+        }
+
+        atlasdata.Reset();
+        //
+        sda.atlasAssets = new AtlasAsset[] { atlasdata };
+        //数据文件
+        sda.skeletonJSON = ResourceLoadUtil.LoadSpineRes<TextAsset>(info.jsonName);
+        return sda;
+    }
+
+    /// <summary>
+    /// 得到Spine位置字符
+    /// </summary>
+    /// <param name="type"></param>
+    /// <returns></returns>
+    private static string GetSpineSlotStr(SpineSlotType type)
+    {
+        switch (type)
+        {
+            case SpineSlotType.Weapon:
+                return "wuqi2";
+            default:
+                return "wuqi2";
+        }
+    }
+
+    /// <summary>
+    ///  获得敌方角色模型的位置
+    /// </summary>
+    private static Vector3 CharModuleOtherUIPos(int index, bool isLeft = true)
+    {
+        switch (index)
+        {
+            case -1:
+                return !isLeft ? LeftMiddlePos : RightMiddlePos;
+            case 0:
+                return !isLeft ? LeftPos1 : RightPos1;
+            case 1:
+                return !isLeft ? LeftPos2 : RightPos2;
+            case 2:
+                return !isLeft ? LeftPos3 : RightPos3;
+            case 3:
+                return !isLeft ? LeftPos4 : RightPos4;
+            default:
+                return !isLeft ? LeftMiddlePos : RightMiddlePos;
+        }
+    }
+
+    //          
+    private static float a;
+    private static float b;
+    private static float apex;
+    private static float deltaHeight;
+    private static void GetParabolaXY(Vector3 startPos, Vector3 endPos, float maxY, float curDistance, out float y, out float x)
+    {
+        float vX = (endPos - startPos).x;
+        float vZ = (endPos - startPos).z;
+        //
+        a = -1;
+        b = Mathf.Sqrt(vX * vX + vZ * vZ);
+        apex = b / 2;
+        deltaHeight = 1 / ((-apex) * (apex - b) / maxY);
+        x = curDistance / b;
+        y = 0/*x * (_endPos.y - _startPos.y) + _startPos.y*/;
+        y += deltaHeight * (a * (curDistance * curDistance) + b * curDistance);
+    }
+
+    /// <summary>
+    /// 得到动画是否循环
+    /// </summary>
+    /// <param name="sate"></param>
+    /// <returns></returns>
+    private static bool GetCharAnimatinoLoop(CharModuleAction sate)
+    {
+        switch (sate)
+        {
+            case CharModuleAction.Idle:
+            case CharModuleAction.Celebrate:
+            case CharModuleAction.Run:
+                return true;
+            case CharModuleAction.Default:
+            case CharModuleAction.Hurt:
+            case CharModuleAction.Die:
+            case CharModuleAction.Zhaohuan:
+            case CharModuleAction.Zhizao:
+            case CharModuleAction.Hurt_jitui:
+            case CharModuleAction.Atk_chongci:
+            case CharModuleAction.Idle_1:
+            case CharModuleAction.Fanhui:
+            case CharModuleAction.Atk_zhunbei:
+            case CharModuleAction.Buff:
+            case CharModuleAction.Atk_gongji:
+            case CharModuleAction.Dazhao:
+            case CharModuleAction.XiaoZhao1:
+            case CharModuleAction.XiaoZhao2:
+            case CharModuleAction.XiaoZhao3:
+            case CharModuleAction.XiaoZhao4:
+            default:
+                return false;
+        }
+    }
+
+    //
+    private const string CharSpineShowPath = "char/model/";
+    private const int MiddleSortingOrde = 100;
+    private const int AddSortingOrde = 1;
+    //对方取
+    private static Vector3 RightPos1 = new Vector3(50, -188, 0);
+    private static Vector3 RightPos2 = new Vector3(170, -125, 0);
+    private static Vector3 RightPos3 = new Vector3(290, -188, 0);
+    private static Vector3 RightPos4 = new Vector3(410, -125, 0);
+    private static Vector3 RightMiddlePos = new Vector3(428, -153.5f, 0);
+    //
+    private static Vector3 LeftPos1 = new Vector3(50, -125, 0);
+    private static Vector3 LeftPos2 = new Vector3(170, -188, 0);
+    private static Vector3 LeftPos3 = new Vector3(290, -125, 0);
+    private static Vector3 LeftPos4 = new Vector3(410, -188, 0);
+    private static Vector3 LeftMiddlePos = new Vector3(428, -153.5f, 0);
+
+    //自己取
+    private static Vector3 LPos1 = new Vector3(-180, -125, 0);
+    private static Vector3 LPos2 = new Vector3(-300, -188, 0);
+    private static Vector3 LPos3 = new Vector3(-420, -125, 0);
+    private static Vector3 LPos4 = new Vector3(-540, -188, 0);
+    private static Vector3 LMiddlePos = new Vector3(428, -153.5f, 0);
+    //
+    private static Vector3 RPos1 = new Vector3(-186, -188, 0);
+    private static Vector3 RPos2 = new Vector3(-300, -125, 0);
+    private static Vector3 RPos3 = new Vector3(-420, -188, 0);
+    private static Vector3 RPos4 = new Vector3(-186, -188, 0);
+    private static Vector3 RMiddlePos = new Vector3(-540, -125, 0);
+    //屏幕中间
+    private static Vector3 screenMiddlePos = new Vector3(0, -188, 0);
+}
+
+/// <summary>
+/// Spine动画信息
+/// </summary>
+public class SpineNameInfo
+{
+    //.json文件名
+    public string jsonName;
+    //.atlas文件名
+    public string atlasName;
+    //贴图文件
+    public string textureName;
+
+    public SpineNameInfo() { }
+
+    public SpineNameInfo(string name, string path)
+    {
+        textureName = path + name;
+        jsonName = textureName + ".json";
+        atlasName = textureName + ".atlas";
+    }
+}
+
+/// <summary>
+/// Spine位置
+/// </summary>
+public enum SpineSlotType
+{
+    /// <summary>
+    /// 武器
+    /// </summary>
+    Weapon = 1,
+}
+
+public enum SpineShowMode
+{
+    UI = 1,
+    Word = 2,
+}

@@ -1,0 +1,160 @@
+﻿using Altar.Data;
+using UnityEngine;
+using UnityEngine.UI;
+using Char.View;
+
+namespace Altar.View
+{
+    public class NewNormalCallPanel: MonoBehaviour
+    {
+        private GameObject m_detialInfo;
+        private GameObject m_bottom;
+
+        private GameObject m_showCharModelPanel;
+        private Transform m_charParent;
+
+        private CallPlayerList m_callPlayerList;
+        private DetialInfo2 m_playerDetialInfo;
+
+        private Text m_name;
+        private Image m_rank;
+        private Image m_charIcon;
+
+        private CharAttribute m_attr;
+        private string m_uid;
+
+        private bool m_hasInit;
+
+        private void InitComponent()
+        {
+            m_showCharModelPanel = transform.Find("ShowCharModel").gameObject;
+            m_showCharModelPanel.SetActive(false);
+            m_charParent = transform.Find("ShowCharModel/CharPos");
+
+            m_name = transform.Find("ShowCharModel/CharInfo/Name").GetComponent<Text>();
+            m_rank = transform.Find("ShowCharModel/CharInfo/Rank/Icon").GetComponent<Image>();
+            m_charIcon = transform.Find("Right/Parent/AttrPanel2/Scroll/Content/Top/HeadIcon").GetComponent<Image>();
+
+            m_detialInfo = transform.Find("Right/Parent/AttrPanel2").gameObject;
+            Utility.SetParent(m_detialInfo,transform.Find("Right/Parent"));
+            m_detialInfo.SetActive(false);
+            m_playerDetialInfo = Utility.RequireComponent<DetialInfo2>(m_detialInfo);
+            m_playerDetialInfo.InitComponent();
+
+            m_callPlayerList = Utility.RequireComponent<CallPlayerList>(transform.Find("CharList").gameObject);
+            m_callPlayerList.InitComponent();
+
+            m_bottom = transform.Find("Bottom").gameObject;
+            m_bottom.SetActive(false);
+
+            Utility.AddButtonListener(transform.Find("Bottom/CallBtn/Btn"),ClickCall);
+            Utility.AddButtonListener(transform.Find("Right/Parent/AttrPanel2/Scroll/Content/Top/ShowModelBtn/Btn"),ClickShowModel);
+        }
+
+        private void OnDisable()
+        {
+            ControllerCenter.Instance.AltarController.Refresh -= InitInfo;
+        }
+
+        public void InitInfo()
+        {
+            if(!m_hasInit)
+            {
+                InitComponent();
+                m_hasInit = true;
+            }
+            ControllerCenter.Instance.AltarController.Refresh += InitInfo;
+            m_callPlayerList.Free();
+            m_callPlayerList.Init(ControllerCenter.Instance.AltarController.GetNormalCallChars(),ClickPlayer);
+        }
+
+        private void ClickPlayer(string uid,CharAttribute attr)
+        {
+            m_uid = uid;
+            m_attr = attr;
+
+            m_detialInfo.SetActive(true);
+            m_playerDetialInfo.UpdateInfo(attr,false);
+
+            m_charIcon.sprite = ResourceLoadUtil.LoadSprite(ResourceType.CharHeadIcon,attr.char_template.HeadIcon);
+
+            bool hasCall = AltarSystem.Instance.HasCall(uid);
+            m_bottom.SetActive(!hasCall);
+        }
+
+
+        private void ClickCall()
+        {
+            if(m_attr == null)
+                return;
+            if(ControllerCenter.Instance.AltarController.CanCall(m_attr.templateID))
+            {
+                Summon_cost summon_Cost = Summon_costConfig.GetSummon_Cost(m_attr.templateID);
+                string des = string.Format(MC_StringConfig.Tips_temple232,summon_Cost.goldCost,summon_Cost.manaCost);
+                ConfirmPanelUtil.ShowConfirmPanel(des,MC_StringConfig.Tips_temple231,
+                    () =>
+                    {
+                        ControllerCenter.Instance.AltarController.Call(m_uid,m_attr);
+                        //更新信息
+                        m_callPlayerList.UpdateWhenCallEnd(m_uid);
+                        m_bottom.SetActive(false);
+                        //  m_attr = null;
+                    });
+            }
+        }
+
+
+        private void ClickShowModel()
+        {
+            if(m_showCharModelPanel.activeSelf)
+            {
+                m_showCharModelPanel.SetActive(false);
+                if(m_attr != null)
+                {
+                    PlayerPool.Instance.Free(m_attr.charID);
+                }
+            }
+            else
+            {
+                GameObject obj = PlayerPool.Instance.GetPlayer(m_attr);
+                if(obj != null)
+                {
+                    Utility.SetParent(obj,m_charParent,true,new Vector3(0.7f,0.7f,1f));
+                }
+                m_name.text = m_attr.char_template.charName;
+                m_rank.sprite = CharaterUti.GetRankSprite((int)m_attr.CharRank);
+                m_rank.SetNativeSize();
+                m_showCharModelPanel.SetActive(true);
+            }
+        }
+
+        public void FreeCharModel()
+        {
+            if(m_showCharModelPanel.activeSelf)
+            {
+                m_showCharModelPanel.SetActive(false);
+                if(m_attr != null)
+                {
+                    PlayerPool.Instance.Free(m_attr.charID);
+                }
+            }
+        }
+
+        public bool CharIsShow()
+        {
+            return m_showCharModelPanel.activeSelf;
+        }
+
+        public void Free()
+        {
+            if(m_callPlayerList != null)
+                m_callPlayerList.Free();
+            if(m_playerDetialInfo != null)
+                m_playerDetialInfo.Free();
+            if(m_attr != null)
+            {
+                PlayerPool.Instance.Free(m_attr.charID);
+            }
+        }
+    }
+}

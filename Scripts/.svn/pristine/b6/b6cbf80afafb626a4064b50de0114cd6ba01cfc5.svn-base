@@ -1,0 +1,141 @@
+﻿using System;
+using Shop.Data;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class ItemTipPanel: UIPanelBehaviour
+{
+
+    private GameObject m_useBtn;
+    private GameObject m_allBtn;
+    private GameObject m_buyBtn;
+    private GameObject m_sellBtn;
+    private GameObject m_sureBtn;
+    private GameObject m_calcelBtn;
+
+    private GameObject m_priceObj;
+
+    private bool m_hasInit = false;
+
+    private ItemTipInfo m_itemInfo;
+
+    private Action m_buyAction;
+    private Action m_sureAction;
+
+    private void InitComponent()
+    {
+
+        m_priceObj = transform.Find("Parent/SellPrice").gameObject;
+        m_buyBtn = transform.Find("Parent/Btn/Buy").gameObject;
+        m_sellBtn = transform.Find("Parent/Btn/Sell").gameObject;
+        m_sureBtn = transform.Find("Parent/Btn/Sure").gameObject;
+        m_allBtn = transform.Find("Parent/Btn").gameObject;
+        m_calcelBtn = transform.Find("Parent/Btn/Cancel").gameObject;
+        m_allBtn.SetActive(true);
+        m_useBtn = transform.Find("Parent/Btn/Use").gameObject;
+
+        Utility.AddButtonListener(transform.Find("Mask"),ClickClose);
+        Utility.AddButtonListener(transform.Find("Parent/Btn/Use/Btn"),ClickClose);
+        Utility.AddButtonListener(transform.Find("Parent/Btn/Cancel/Btn"),ClickClose);
+
+        Utility.AddButtonListener(transform.Find("Parent/Btn/Buy/Btn"),() =>
+        {
+            if(m_buyAction != null)
+            {
+                m_buyAction();
+                m_buyAction = null;
+            }
+            ClickClose();
+        });
+
+        Utility.AddButtonListener(transform.Find("Parent/Btn/Sure/Btn"),() =>
+        {
+            ClickClose();
+            if(m_sureAction != null)
+            {
+                m_sureAction();
+                m_sureAction = null;
+            }
+        });
+
+        GameObject obj = ResourceLoadUtil.LoadPrefab(StringDefine.PrefabNameDefine.ItemDetialInfo);
+        Utility.SetParent(obj, transform.Find("DetialInfo"));
+        m_itemInfo = Utility.RequireComponent<ItemTipInfo>(obj);
+    }
+
+    public void Init(int itemID,int onlyId)
+    {
+        if(!m_hasInit)
+        {
+            InitComponent();
+            m_hasInit = true;
+        }
+
+
+        Item_instance item = Item_instanceConfig.GetItemInstance(itemID);
+        m_useBtn.SetActive(item.itemType==(int)ItemType.WuQi || item.itemType == (int)ItemType.KuiJia ||item.itemType == (int)ItemType.ShiPing);
+        m_sellBtn.SetActive(true);
+        m_buyBtn.SetActive(false);
+        m_sureBtn.SetActive(false);
+        m_calcelBtn.SetActive(true);
+
+        ItemAttribute attr = ItemSystem.Instance.GetItemAttribute(itemID);
+        InitItemInfo(attr.GetItemData());
+
+        m_priceObj.SetActive(true);
+    }
+
+
+    public void Init(ShopItemInfo shopItemInfo,Action buyAction)
+    {
+        if(!m_hasInit)
+        {
+            InitComponent();
+            m_hasInit = true;
+        }
+
+        m_buyAction = buyAction;
+
+        m_useBtn.SetActive(false);
+        m_sellBtn.SetActive(false);
+        m_buyBtn.SetActive(true);
+        m_calcelBtn.SetActive(true);
+        m_sureBtn.SetActive(false);
+
+        InitItemInfo(shopItemInfo.itemData);
+
+        m_priceObj.SetActive(true);
+    }
+
+
+    public void InitOnWorkShop(ItemAttribute itemAttribute,Action action)
+    {
+        if(!m_hasInit)
+        {
+            InitComponent();
+            m_hasInit = true;
+        }
+        m_sureAction = action;
+
+        m_priceObj.SetActive(false);
+        m_useBtn.SetActive(false);
+        m_sellBtn.SetActive(false);
+        m_buyBtn.SetActive(false);
+        m_calcelBtn.SetActive(false);
+        m_sureBtn.SetActive(true);
+
+        InitItemInfo(itemAttribute.GetItemData());
+    }
+
+
+    public void InitItemInfo(ItemData itemdata)
+    {
+        m_itemInfo.UpdateInfo(itemdata);
+    }
+
+    private void ClickClose()
+    {
+        TipEventCenter.Instance.EmitCloseTipEvent();
+        UIPanelManager.Instance.Hide<ItemTipPanel>(false);
+    }
+}

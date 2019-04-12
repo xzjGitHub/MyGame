@@ -1,0 +1,138 @@
+﻿using College.Research.Data;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class MatEnchantDetialInfo: MonoBehaviour
+{
+    private Transform m_parent;
+    private GameObject m_prefab;
+
+    private Image m_icon;
+    private Text m_name;
+    private Text m_quility;
+
+    private List<GameObject> m_starList = new List<GameObject>();
+
+    private VerticalLayoutGroup m_vertical;
+    private ContentSizeFitter m_sizeFitter;
+
+    private bool m_hasInit;
+
+    private CoroutineUtil m_cor;
+
+
+    private void OnDisable()
+    {
+        if(m_cor != null)
+        {
+            if(m_cor.Running)
+            {
+                m_cor.Stop();
+            }
+        }
+    }
+
+    public void InitComponent()
+    {
+        m_parent = transform.Find("Scroll/Content/Attr");
+        m_prefab = transform.Find("Scroll/Content/Attr/Prefab").gameObject;
+        m_prefab.SetActive(false);
+
+        m_icon = transform.Find("Title/Icon").GetComponent<Image>();
+        m_name = transform.Find("Title/Name").GetComponent<Text>();
+        m_quility = transform.Find("Scroll/Content/Parent/Quli/Qui").GetComponent<Text>();
+
+        Transform trans = transform.Find("Scroll/Content/Parent/Quli/Grid");
+        for(int i = 0; i < trans.childCount; i++)
+        {
+            m_starList.Add(trans.GetChild(i).transform.Find("Have").gameObject);
+        }
+
+        m_vertical = m_parent.GetComponent<VerticalLayoutGroup>();
+        m_sizeFitter = m_parent.GetComponent<ContentSizeFitter>();
+    }
+
+    public void UpdateInfo(int instanceId)
+    {
+        if(!m_hasInit)
+            InitComponent();
+
+        Free();
+
+        Item_instance item = Item_instanceConfig.GetItemInstance(instanceId);
+       // int finalItemLevel = (int)ResearchLabSystem.Instance.GetReseachLvel(item.enchantType);
+        Enchant_template enchant = Enchant_templateConfig.GetEnchant_Template(instanceId);
+
+        EnchantRnd rand1 = new EnchantRnd(instanceId,(int)item.maxItemLevel,enchant.upgrade[0],enchant.upgrade[0]);
+        EnchantRnd rand2 = new EnchantRnd(instanceId,(int)item.maxItemLevel,enchant.upgrade[1],enchant.upgrade[1]);
+
+        EquipAttribute attr1 = new EquipAttribute();
+        attr1.EquipEnchanted(rand1);
+
+        //EquipAttribute attr2 = new EquipAttribute();
+        //attr2.EquipEnchanted(rand2);
+
+        List<AtrDesInfo> list = EnchantAttriUtil.GetEquipAttr2(attr1);
+
+        for(int i = 0; i < list.Count; i++)
+        {
+             GameObject obj = GameObjectPool.Instance.GetObject(
+               StringDefine.ObjectPooItemKey.MatEnchantItem,m_prefab);
+
+            Utility.SetParent(obj,m_parent);
+
+            obj.GetComponent<Text>().text = list[i].Des;
+        }
+
+        m_icon.sprite = ResourceLoadUtil.LoadSprite(ResourceType.ItemIcon,item.itemIcon.Count > 0 ? item.itemIcon[0] : "");
+        m_name.text = item.itemName;
+        m_quility.text = "品质: " + rand1.equipQuality+" — "+rand2.equipQuality;
+
+        InitStar(rand1.enchantRank);
+
+        UpdatePosInfo();
+    }
+
+    private void InitStar(int rank)
+    {
+        int temp = rank - 1;
+        // Transform trans = transform.Find("Scroll/Content/Parent/Quli/Grid");
+        for(int i = 0; i < m_starList.Count; i++)
+        {
+            m_starList[i].SetActive((i <= temp));
+        }
+    }
+
+    public void Free()
+    {
+        GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.MatEnchantItem);
+    }
+
+    private void UpdatePosInfo()
+    {
+        if(m_cor != null)
+        {
+            if(m_cor.Running)
+            {
+                m_cor.Stop();
+            }
+        }
+        m_cor = new CoroutineUtil(UpdatePos(),false);
+        m_cor.Start();
+    }
+
+    private IEnumerator UpdatePos()
+    {
+        m_vertical.enabled = false;
+        yield return null;
+        m_vertical.enabled = true;
+        yield return null;
+
+        m_sizeFitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+        yield return null;
+        m_sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+    }
+
+}

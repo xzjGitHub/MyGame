@@ -1,0 +1,232 @@
+﻿using UnityEngine;
+using UnityEngine.UI;
+
+namespace College.Enchant.View
+{
+    public class Enchant: MonoBehaviour
+    {
+        private GameObject m_selectItemObj;
+        private GameObject m_detialObj;
+        private GameObject m_matDetialObj;
+
+        private GameObject m_cost;
+        private GameObject m_bottom;
+        private GameObject m_matGray;
+        private GameObject m_select;
+
+        private Text m_goldCost;
+        private Text m_manaCost;
+
+        private EnchantInfo m_equipInfo;
+        private EnchantMatInfo m_itemInfo;
+        private SelectItemPanel m_selectItemPanel;  
+        private EquipDetailInfo m_detialInfo;
+        private MatEnchantDetialInfo m_matEnchantInfo;
+
+        private bool m_hasInit;
+
+        private EquipAttribute m_equip;
+        private ItemAttribute m_item;
+
+
+        public void InitInfo()
+        {
+            if(!m_hasInit)
+            {
+                InitComponent();
+                m_hasInit = true;
+            }
+
+            Reset();
+        }
+
+        private void InitComponent()
+        {
+            m_cost = transform.Find("Cost").gameObject;
+            m_bottom = transform.Find("Bottom").gameObject;
+            m_matGray = transform.Find("LeftInfo/Mat/Btn/Gray").gameObject;
+
+            m_cost.SetActive(false);
+            m_bottom.SetActive(false);
+            m_matGray.SetActive(false);
+
+            m_goldCost = transform.Find("Cost/GoldCost/Num").GetComponent<Text>();
+            m_manaCost = transform.Find("Cost/ManaCost/Num").GetComponent<Text>();
+
+            m_equipInfo = Utility.RequireComponent<EnchantInfo>(transform.Find("LeftInfo/Equip").gameObject);
+            m_equipInfo.InitComponent(ClickEquip);
+
+            m_itemInfo = Utility.RequireComponent<EnchantMatInfo>(transform.Find("LeftInfo/Mat").gameObject);
+            m_itemInfo.InitComponent(ClickMat);
+
+            m_selectItemObj = transform.Find("SelectItemPanel").gameObject;
+            m_selectItemObj.SetActive(false);
+            m_selectItemPanel = Utility.RequireComponent<SelectItemPanel>(m_selectItemObj);
+            m_selectItemPanel.InitComponent();
+
+            m_detialObj = ResourceLoadUtil.LoadPrefab(StringDefine.PrefabNameDefine.EquipDetialInfo);
+            Utility.SetParent(m_detialObj,transform.Find("DetialInfo"));
+            m_detialInfo = Utility.RequireComponent<EquipDetailInfo>(m_detialObj);
+
+            m_matDetialObj = transform.Find("EnchantMatInfo").gameObject;
+            m_matEnchantInfo = Utility.RequireComponent<MatEnchantDetialInfo>(m_matDetialObj);
+            m_matDetialObj.SetActive(false);
+
+            Utility.AddButtonListener(transform.Find("Bottom/Enchant/Btn"),ClickEnchant);
+            Utility.AddButtonListener(transform.Find("LeftInfo/Equip/Image"),ClickEquip);
+            Utility.AddButtonListener(transform.Find("LeftInfo/Mat/Image"),ClickMat);
+        }
+
+        private void ClickEquip(GameObject obj)
+        {
+            UpdateSlect(obj);
+            m_selectItemObj.SetActive(true);
+            m_selectItemPanel.UpdateInfo(m_equip,true,ItemChangeCallBack);
+        }
+
+        private void ClickMat(GameObject obj)
+        {
+            if(m_equip == null)
+                return;
+            UpdateSlect(obj);
+            m_selectItemObj.SetActive(true);
+            m_selectItemPanel.UpdateInfo(m_item,false,ItemChangeCallBack);
+        }
+
+        private void ClickEnchant()
+        {
+            if(ControllerCenter.Instance.EquipEnchanteController.CanFomo(m_item))
+            {
+                ControllerCenter.Instance.EquipEnchanteController.Enchant(m_equip.itemID,m_item.instanceID,m_item.itemID);
+                UIPanelManager.Instance.Show<EnchantSucTipPanel>(CavasType.Three,new System.Collections.Generic.List<object> { m_equip });
+                Reset();
+            }
+        }
+
+
+        private void ItemChangeCallBack(ItemAttribute attr,bool isEquip)
+        {
+            if(isEquip)
+            {
+                if(attr == m_equip)
+                    return;
+                EquipAttribute equip = attr as EquipAttribute;
+                EquipChange(equip);
+            }
+            else
+            {
+                if(attr == m_item)
+                    return;
+                RareChange(attr);
+            }
+        }
+
+        private void EquipChange(EquipAttribute attr)
+        {
+            m_equipInfo.UpdateInfo(attr);
+            if(attr != null)
+            {
+                m_equip = attr;
+                m_detialInfo.Free();
+                m_detialInfo.InitInfo(attr);
+            }
+            else
+            {
+                m_equip = null;
+                m_item = null;
+                m_itemInfo.UpdateInfo(null);
+            }
+            m_detialObj.SetActive(m_equip != null);
+            m_matGray.SetActive(m_equip == null);
+            m_bottom.SetActive(m_item != null);
+            m_cost.SetActive(m_item != null);
+            m_matDetialObj.SetActive(false);
+        }
+
+
+        private void RareChange(ItemAttribute attr)
+        {
+            m_itemInfo.UpdateInfo(attr);
+            if(attr != null)
+            {
+                m_item = attr;
+                m_matEnchantInfo.UpdateInfo(attr.instanceID);
+                UpdateCost();
+            }
+            else
+            {
+                m_item = null;
+            }
+            m_bottom.SetActive(m_item != null);
+            m_cost.SetActive(m_item != null);
+
+            m_matDetialObj.SetActive(m_item != null);
+            m_detialObj.SetActive(false);
+        }
+
+        private void UpdateCost()
+        {
+            MR_template rare = MR_templateConfig.GetTemplate(m_item.instanceID);
+            m_goldCost.text = rare.goldCost.ToString();
+            m_manaCost.text = rare.manaCost.ToString();
+        }
+
+        private void UpdateSlect(GameObject obj)
+        {
+            if(m_select != null)
+            {
+                m_select.SetActive(false);
+            }
+            m_select = obj;
+        }
+
+        private void ClickEquip()
+        {
+            if(m_equip == null)
+                return;
+            m_detialObj.SetActive(true);
+            m_detialInfo.InitInfo(m_equip);
+            m_matDetialObj.SetActive(false);
+        }
+
+        private void ClickMat()
+        {
+            if(m_equip == null)
+                return;
+            if(m_item == null)
+                return;
+            m_detialObj.SetActive(false);
+            m_matDetialObj.SetActive(true);
+        }
+
+        private void Reset()
+        {
+            m_equip = null;
+            m_item = null;
+            m_matGray.SetActive(m_equip == null);
+            m_bottom.SetActive(m_item != null);
+            m_cost.SetActive(m_item != null);
+
+            if(m_detialObj != null)
+                m_detialObj.SetActive(false);
+
+            if(m_select != null)
+                m_select.SetActive(false);
+
+            m_detialObj.SetActive(false);
+            m_matDetialObj.SetActive(false);
+
+            m_equipInfo.UpdateInfo(m_equip);
+            m_itemInfo.UpdateInfo(m_item);
+        }
+
+        public void Free()
+        {
+            if(m_selectItemPanel != null)
+                m_selectItemPanel.Free();
+
+            if(m_matEnchantInfo != null)
+                m_matEnchantInfo.Free();
+        }
+    }
+}

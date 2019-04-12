@@ -1,0 +1,81 @@
+﻿using EventCenter;
+using UnityEngine;
+
+public partial class NewMainPanel: UIPanelBehaviour
+{
+    public static NewMainPanel Instance;
+
+    private Animator m_animator;
+
+    private Title m_title;
+
+    private GameObject m_charBtn;
+    private GameObject m_bagBtn;
+
+    protected override void OnAwake()
+    {
+        Instance = this;
+
+        m_charBtn = transform.Find("Btn/Char").gameObject;
+        m_charBtn.SetActive(false);
+        m_bagBtn = transform.Find("Btn/Bag").gameObject;
+        m_bagBtn.SetActive(false);
+        m_title = transform.Find("Title").GetComponent<Title>();
+        m_title.Init(ClickBack);
+
+        m_animator = gameObject.GetComponent<Animator>();
+
+        UpdateWhenClickBuildFucBtn(false);
+
+        InitBtnClick();
+
+        EventManager.Instance.RegEventListener<bool>(EventSystemType.UI,
+          EventTypeNameDefine.MainPanelAnim,UpdateWhenClickBuildFucBtn);
+        EventManager.Instance.RegEventListener<bool,string>(EventSystemType.UI,
+            EventTypeNameDefine.UpdateTitleName,UpdateName);
+
+        EventManager.Instance.RegEventListener(EventSystemType.UI,
+           EventTypeNameDefine.ShowMainPanelBtn,ShowBtn);
+    }
+
+    protected override void Destroy()
+    {
+        EventManager.Instance.UnRegEventListener<bool>(EventSystemType.UI,
+          EventTypeNameDefine.MainPanelAnim,UpdateWhenClickBuildFucBtn);
+        EventManager.Instance.UnRegEventListener<bool,string>(EventSystemType.UI,
+         EventTypeNameDefine.UpdateTitleName,UpdateName);
+
+        EventManager.Instance.UnRegEventListener(EventSystemType.UI,
+          EventTypeNameDefine.ShowMainPanelBtn,ShowBtn);
+    }
+
+    private void InitBtnClick()
+    {
+        Utility.AddButtonListener(transform.Find("Btn/Bag/Image"),ClickBag);
+        Utility.AddButtonListener(transform.Find("Btn/Char/Image"),ClickChar);
+        Utility.AddButtonListener(transform.Find("Btn/Adventure"),ClickAdventure);
+        Utility.AddButtonListener(transform.Find("Btn/Core/Image"),() => ClickBuild(BuildingTypeIndex.Core));
+        Utility.AddButtonListener(transform.Find("Btn/Hall/Image"),() => ClickBuild(BuildingTypeIndex.TownHall));
+        Utility.AddButtonListener(transform.Find("Btn/Barrack/Image"),() => ClickBuild(BuildingTypeIndex.Barracks));
+        Utility.AddButtonListener(transform.Find("Btn/WorkShop/Image"),() => ClickBuild(BuildingTypeIndex.WorkShop));
+        Utility.AddButtonListener(transform.Find("Btn/Shop/Image"),() => ClickBuild(BuildingTypeIndex.Shop));
+        Utility.AddButtonListener(transform.Find("Btn/College/Image"),() => ClickBuild(BuildingTypeIndex.College));
+    }
+
+    private void UpdateWhenClickBuildFucBtn(bool click)
+    {
+        UpdateBgPosZ(click);
+    }
+
+    private void UpdateBgPosZ(bool enlarge)
+    {
+        string animName = enlarge ? "NewMainPanelPlay" : "NewMainPanelPlay1";
+        m_animator.Play(animName);
+    }
+
+    private void ShowBtn()
+    {
+        m_charBtn.SetActive(true);
+        m_bagBtn.SetActive(true);
+    }
+}

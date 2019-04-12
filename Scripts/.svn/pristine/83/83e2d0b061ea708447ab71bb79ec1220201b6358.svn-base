@@ -1,0 +1,255 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using GameEventDispose;
+
+
+/// <summary>
+/// 队伍系统
+/// </summary>
+public class TeamSystem : ScriptBase
+{
+    private static TeamSystem instance;
+    public static TeamSystem Instance { get { return instance; } }
+
+    private TeamLocation teamLocation = TeamLocation.Explore;
+    private List<int> playSkills = new List<int>();
+    public TeamAttribute TeamAttribute
+    {
+        get { return teamAttribute; }
+    }
+
+    public TeamLocation Location
+    {
+        get { return teamLocation; }
+    }
+
+    public List<int> PlaySkills
+    {
+        get { return playSkills; }
+    }
+
+    //
+    private TeamAttribute teamAttribute = new TeamAttribute();
+    private float finalCharCooldown;
+    private int teamId;
+    private TeamData teamData = new TeamData();
+
+    public TeamSystem()
+    {
+        instance = this;
+    }
+    /// <summary>
+    /// 创建队伍
+    /// </summary>
+    public void CreateTeam(TeamLocation _location = TeamLocation.Explore)
+    {
+        teamAttribute = new TeamAttribute();
+        teamLocation = _location;
+    }
+
+    /// <summary>
+    /// 设置角色列表
+    /// </summary>
+    /// <param name="_charIds"></param>
+    public void SetCharList(List<int> _charIds)
+    {
+        teamAttribute.SetCharList(_charIds);
+    }
+
+    /// <summary>
+    /// 设置角色列表
+    /// </summary>
+    public void SetCharList(List<CharAttribute> _charAttributes)
+    {
+        teamAttribute.SetCharList(_charAttributes);
+    }
+    /// <summary>
+    /// 设置角色列表
+    /// </summary>
+    public void SetCharList(List<CombatUnit> _combatUnits)
+    {
+        teamAttribute.SetCharList(_combatUnits);
+    }
+    /// <summary>
+    /// 设置玩家技能
+    /// </summary>
+    /// <param name="_list"></param>
+    public void SetPlayerSkill(List<int> _list)
+    {
+        playSkills = _list;
+    }
+    public void UpdateCharHp(List<CombatUnit> _list)
+    {
+        teamAttribute.UpdateCharHp(_list);
+    }
+    /// <summary>
+    /// 更新角色状态
+    /// </summary>
+    public void UpdateCharRestState()
+    {
+        teamAttribute.UpdateCharRestState();
+    }
+
+    /// <summary>
+    /// 战斗角色复活
+    /// </summary>
+    /// <param name="resurrectProp"></param>
+    public void CombatRevivableChar(float resurrectProp)
+    {
+        teamAttribute.CombatRevivableChar(resurrectProp);
+    }
+
+    /// <summary>
+    /// 使用生命球
+    /// </summary>
+    public void UseGlobHealing(float _value)
+    {
+        teamAttribute.UseGlobHealing(_value);
+    }
+
+    public bool IsEventVisitHPCost(float visitHPCost)
+    {
+        return teamAttribute.IsEventVisitHPCost(visitHPCost);
+    }
+
+    /// <summary>
+    /// 事件访问生命消耗
+    /// </summary>
+    /// <param name="visitHPCost"></param>
+    /// <param name="list"></param>
+    /// <returns></returns>
+    public void EventVisitHPCost(float visitHPCost, out List<int> list)
+    {
+        teamAttribute.EventVisitHPCost(visitHPCost, out list);
+    }
+
+    /// <summary>
+    /// 事件访问生命消耗
+    /// </summary>
+    /// <param name="visitHPCost"></param>
+    /// <param name="list"></param>
+    /// <returns></returns>
+    public void EventVisitHPCost(float visitHPCost)
+    {
+        var list = new List<int>();
+        teamAttribute.EventVisitHPCost(visitHPCost, out list);
+    }
+
+    /// <summary>
+    /// 得到队伍准备最大等级
+    /// </summary>
+    /// <returns></returns>
+    public float GetTeamEquipMaxLevel()
+    {
+        if (teamAttribute == null) return 0;
+        if (teamAttribute.charAttribute.Count == 0) return 0;
+        float level = 0;
+        foreach (var item in teamAttribute.charAttribute)
+        {
+            foreach (var equip in item.equipAttribute)
+            {
+                level = Math.Max(level, 0);
+            }
+        }
+        return level;
+    }
+
+    /// <summary>
+    /// 移除队伍
+    /// </summary>
+    public void RemoveTeam(CharAttribute _charAttribute)
+    {
+        teamAttribute.RemoveTeam(_charAttribute);
+    }
+
+
+    private int _playSum;
+    /// <summary>
+    /// 角色消耗生命
+    /// </summary>
+    public void CharCostHP_UI(List<int> charCostHP)
+    {
+        int _index = 0;
+
+        _playSum = 0;
+        EventDispatcher.Instance.CharEvent.AddEventListener<CharActionOperation>(EventId.CharEvent, OnCharEvent);
+        foreach (var item in teamAttribute.combatUnits)
+        {
+            if (charCostHP == null || charCostHP.Count - 1 < _index) continue;
+            EventDispatcher.Instance.CharEvent.DispatchEvent(EventId.CharEvent, CharActionOperation.HPCost, item.teamId, item.charAttribute.charID,
+                (object)new object[] { item.maxHp, item.hp + charCostHP[_index], charCostHP[_index] });
+            _index++;
+        }
+    }
+
+    private void OnCharEvent(CharActionOperation obj)
+    {
+        switch (obj)
+        {
+            case CharActionOperation.HPCostShowEnd:
+                _playSum++;
+                break;
+        }
+        if (_playSum == teamAttribute.combatUnits.Count)
+        {
+            EventDispatcher.Instance.CharEvent.RemoveEventListener<CharActionOperation>(EventId.CharEvent, OnCharEvent);
+        }
+    }
+
+
+    /// <summary>
+    /// 得到队伍存档
+    /// </summary>
+    /// <returns></returns>
+    private TeamData GetTeamData()
+    {
+        TeamData _data = new TeamData
+        {
+            teamId = teamId,
+            finalCharCooldown = finalCharCooldown,
+        };
+        foreach (var item in teamAttribute.charAttribute)
+        {
+            _data.charIds.Add(item.charID);
+        }
+
+        return _data;
+    }
+
+
+    public override void SaveData(string parentPath)
+    {
+
+    }
+
+    public override void ReadData(string parentPath)
+    {
+
+    }
+
+    public override void Init()
+    {
+
+    }
+}
+
+
+/// <summary>
+/// 队伍位置
+/// </summary>
+public enum TeamLocation
+{
+    /// <summary>
+    /// 探索
+    /// </summary>
+    Explore = 1,
+    /// <summary>
+    /// 周期入侵
+    /// </summary>
+    CycleInvasion = 2,
+    /// <summary>
+    /// 远征
+    /// </summary>
+    Expedition = 3,
+}

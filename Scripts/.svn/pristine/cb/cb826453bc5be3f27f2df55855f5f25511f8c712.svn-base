@@ -1,0 +1,276 @@
+﻿using System;
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using EventCenter;
+using UnityEngine.UI;
+
+public class UIGameData : UIPanelBehaviour
+{
+    private Button closeButton;
+    private RectTransform buttonTransform;
+    private Button newButton;
+    private Button saveButton;
+    private Button delButton;
+    private Button openButton;
+    private Text errorText;
+    private Button charButton;
+    private Button equipmentButton;
+    //
+    private RectTransform dataListTransform;
+    private List<Vector3> dataListVector3;
+    private List<Text> dataTexts;
+    private ContentSizeFitter contentSizeFitter;
+    private CanvasGroup canvasGroup;
+    //
+    public const string errorStr1 = "没有选择存档！";
+    public const string errorStr2 = "角色创建OK！";
+    public const string errorStr3 = "装备创建OK！";
+    //
+    private bool isFirst;
+    private int scriptId;
+    private bool isNew;
+    //
+    private int selectIndex;
+    private int scriptIndex;
+
+
+
+    protected override void OnShow(List<System.Object> parmers = null)
+    {
+        Init();
+        //
+        errorText.gameObject.SetActive(false);
+        //
+        UpdateDatasShow();
+        //
+        UIPanelManager.Instance.Hide<StartPanel>();
+        isNew = false;
+        canvasGroup.alpha = 0;
+    }
+
+    private void Init()
+    {
+        if (isFirst) return;
+        GetObj();
+        //
+        isFirst = true;
+    }
+
+    private void GetObj()
+    {
+        errorText = transform.Find("Error").GetComponent<Text>();
+        closeButton = transform.Find("Close").GetComponent<Button>();
+        closeButton.onClick.AddListener(OnClickClose);
+        charButton = transform.Find("Char").GetComponent<Button>();
+        charButton.onClick.AddListener(OnClickChar);
+        equipmentButton = transform.Find("Equipment").GetComponent<Button>();
+        equipmentButton.onClick.AddListener(OnClickEquipment);
+        //
+        buttonTransform = transform.Find("ButtonList").GetComponent<RectTransform>();
+        dataListTransform = transform.Find("DataList").GetComponent<RectTransform>();
+        contentSizeFitter = buttonTransform.GetComponent<ContentSizeFitter>();
+        canvasGroup = buttonTransform.GetComponent<CanvasGroup>();
+        //
+        newButton = buttonTransform.Find("New").GetComponent<Button>();
+        saveButton = buttonTransform.Find("Save").GetComponent<Button>();
+        delButton = buttonTransform.Find("Del").GetComponent<Button>();
+        openButton = buttonTransform.Find("Open").GetComponent<Button>();
+        //
+        newButton.onClick.AddListener(OnClickCreateData);
+        saveButton.onClick.AddListener(OnClickSaveData);
+        delButton.onClick.AddListener(OnClickDeleteData);
+        openButton.onClick.AddListener(OnClickOpen);
+        //
+        dataTexts = new List<Text>();
+        dataListVector3 = new List<Vector3>();
+        foreach (Transform item in dataListTransform)
+        {
+            int _index = item.GetSiblingIndex();
+            dataListVector3.Add(item.GetComponent<RectTransform>().anchoredPosition);
+            dataTexts.Add(item.Find("Text").GetComponent<Text>());
+            item.Find("Button").gameObject.AddComponent<Button>().onClick.AddListener(delegate
+            {
+                OnClickDataButton(_index);
+            });
+            dataTexts.Last().name = 0.ToString();
+        }
+    }
+
+    /// <summary>
+    /// 点击数据按钮
+    /// </summary>
+    /// <param name="_index"></param>
+    private void OnClickDataButton(int _index)
+    {
+        buttonTransform.anchoredPosition = dataListVector3[_index];
+        selectIndex = _index;
+        //
+        StartCoroutine(UpdateButtonShow(GameDataManager.IsDirectoryExists(dataTexts[_index].name + "/" + _index)));
+    }
+
+    /// <summary>
+    /// 存档
+    /// </summary>
+    private void OnClickSaveData()
+    {
+        isNew = false;
+        PlayerSystem.Instance.SaveData();
+        //
+        ScriptSystem.Instance.SaveData();
+        //
+        dataTexts[selectIndex].text = TimeUtil.GetTimeDescription(ScriptTimeSystem.Instance.Second);
+        //
+        UpdateDatasShow();
+    }
+
+    /// <summary>
+    /// 删除存档
+    /// </summary>
+    private void OnClickDeleteData()
+    {
+        isNew = false;
+        dataTexts[selectIndex].text = String.Empty;
+        GameDataManager.DeleteData(dataTexts[selectIndex].name + "/" + selectIndex);
+        //
+        UpdateDatasShow();
+        OnClickDataButton(selectIndex);
+    }
+
+    /// <summary>
+    /// 创建存档
+    /// </summary>
+    private void OnClickCreateData()
+    {
+        Script_template _scriptTemplate = Script_templateConfig.GetScript_templateIndex(scriptIndex);
+        scriptId = _scriptTemplate.templateID;
+        isNew = true;
+        UpdateScript();
+    }
+
+    /// <summary>
+    /// 点击打开
+    /// </summary>
+    private void OnClickOpen()
+    {
+        scriptId = int.Parse(dataTexts[selectIndex].name);
+        isNew = false;
+        UpdateScript();
+    }
+    /// <summary>
+    /// 点击关闭
+    /// </summary>
+    private void OnClickClose()
+    {
+        if (ScriptSystem.Instance == null)
+        {
+            StartCoroutine(IECloseIntro(errorStr1));
+            return;
+        }
+        UIPanelManager.Instance.Show<NewMainPanel>(CavasType.Three);
+        UIPanelManager.Instance.Hide<UIGameData>();
+    }
+    /// <summary>
+    /// 点击角色
+    /// </summary>
+    private void OnClickChar()
+    {
+        if (ScriptSystem.Instance == null)
+        {
+            StartCoroutine(IECloseIntro(errorStr1));
+            return;
+        }
+        //添加角色
+        foreach (var item in Char_templateConfig.GetTemplates())
+        {
+            CharSystem.Instance.CreateChar(new CharCreate(item.templateID));
+        }
+        StartCoroutine(IECloseIntro(errorStr2));
+    }
+    /// <summary>
+    /// 点击装备
+    /// </summary>
+    private void OnClickEquipment()
+    {
+        if (ScriptSystem.Instance == null)
+        {
+            StartCoroutine(IECloseIntro(errorStr1));
+            return;
+        }
+        //添加物品
+        foreach (var item in Item_instanceConfig.GetItemInstances())
+        {
+            ItemSystem.Instance.CreateItem(item.instanceID, 1, true);
+        }
+        StartCoroutine(IECloseIntro(errorStr3));
+    }
+
+    private void UpdateScript()
+    {
+        GameStatusManager.Instance.ChangeStatus(GameStatus.BeginEnterScript);
+        // GameEventrCenter.Instance.EmitGameStatusChangeEvent(GameStatus.BeginEnterScript);
+        ScriptController.InitLevelData(isNew, scriptId, selectIndex);
+        OnClickClose();
+    }
+
+
+    /// <summary>
+    /// 更新显示
+    /// </summary>
+    /// <param name="_isHave"></param>
+    /// <returns></returns>
+    IEnumerator UpdateButtonShow(bool _isHave)
+    {
+        int _tempId = int.Parse(dataTexts[selectIndex].name);
+        canvasGroup.alpha = 0;
+        openButton.gameObject.SetActive(_isHave);
+        newButton.gameObject.SetActive(!_isHave);
+        if (ScriptSystem.Instance != null)
+        {
+            saveButton.gameObject.SetActive(_isHave && (_tempId == ScriptSystem.Instance.ScriptId && selectIndex == PlayerSystem.Instance.SelectIndex));
+        }
+        else
+        {
+            saveButton.gameObject.SetActive(false);
+        }
+        delButton.gameObject.SetActive(_isHave);
+        //
+        contentSizeFitter.enabled = false;
+        yield return null;
+        //
+        contentSizeFitter.enabled = true;
+        canvasGroup.alpha = 1;
+    }
+
+    IEnumerator IECloseIntro(string _info)
+    {
+        errorText.text = _info;
+        newButton.gameObject.SetActive(false);
+        errorText.gameObject.SetActive(true);
+        float _time = 0;
+        yield return null;
+        while (_time <= 1.5f)
+        {
+            _time += Time.deltaTime;
+            yield return null;
+        }
+        errorText.gameObject.SetActive(false);
+    }
+
+    private void UpdateDatasShow()
+    {
+        foreach (var item in dataTexts)
+        {
+            item.text = String.Empty;
+        }
+        //
+        List<ScriptData> _list = GameDataManager.GetScriptDatas(Script_templateConfig.GetFirstScript_template().templateID);
+        //
+        for (int i = 0; i < _list.Count; i++)
+        {
+            dataTexts[_list[i].directoryIndex].text = TimeUtil.GetTimeDescription(_list[i].scriptTime);
+            dataTexts[_list[i].directoryIndex].name = _list[i].scriptID.ToString();
+        }
+    }
+}

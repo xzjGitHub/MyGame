@@ -1,0 +1,231 @@
+﻿using System.Collections.Generic;
+using System.Linq;
+using GameEventDispose;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UITestCombatTeam : MonoBehaviour
+{
+    public List<InputField> leftInputFields = new List<InputField>();
+    public List<InputField> rightInputFields = new List<InputField>();
+    public InputField npcTeamField;
+    public Toggle npcToggle;
+
+    private readonly bool isNpcTeam = false;
+    private void Start()
+    {
+        LogHelperLSK.Log("00000000000000000000");
+        charSystem = new CharSystem();
+        //
+        Init();
+    }
+
+    private void Init()
+    {
+        ui = transform.Find("UI").gameObject;
+        openButton = transform.Find("Open").GetComponent<Button>();
+        closeButton = transform.Find("Close").GetComponent<Button>();
+        startCombat = transform.Find("StartCombat").GetComponent<Button>();
+        createButton = ui.transform.Find("Create").GetComponent<Button>();
+
+        //
+        openButton.onClick.AddListener(Open);
+        closeButton.onClick.AddListener(Close);
+        startCombat.onClick.AddListener(OnClickStartCombat);
+        createButton.onClick.AddListener(CreateCombat);
+    }
+
+    private void Open()
+    {
+        openButton.gameObject.SetActive(false);
+        ui.SetActive(true);
+        closeButton.gameObject.SetActive(true);
+    }
+
+    private void Close()
+    {
+        closeButton.gameObject.SetActive(false);
+        ui.SetActive(false);
+        openButton.gameObject.SetActive(true);
+    }
+
+
+
+
+    /// <summary>
+    /// 开始战斗
+    /// </summary>
+    private void OnClickStartCombat()
+    {
+        startCombat.gameObject.SetActive(false);
+        //
+        combatUiOperation.Init(true);
+        combatManager = combatUiOperation.CombatManager;
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, CombatStage.StartRound, (object)null);
+    }
+
+    private CombatTeamInfo playerInfo, enemyInfo;
+
+    private void InitCombt()
+    {
+        EventDispatcher.Instance.CombatEvent.RemoveEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatStageEvent);
+        EventDispatcher.Instance.CombatEvent.AddEventListener<PlayCombatStage, object>(EventId.CombatEvent, OnCombatStageEvent);
+        combatSystem = new CombatSystem();
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, CombatStage.CreateCombat, (object)new CombatTeamInfo[] { playerInfo, enemyInfo });
+    }
+    /// <summary>
+    /// 创建战斗
+    /// </summary>
+    private void CreateCombat()
+    {
+        if (combatUiOperation != null)
+        {
+            Destroy(combatUiOperation.gameObject);
+        }
+        //
+        GetCharIds(leftInputFields, leftCharIds);
+        if (leftCharIds.Count == 0)
+        {
+            return;
+        }
+        //
+        Close();
+        Char_template template;
+        //创建玩家
+        List<CombatUnit> _leftoCmbatUnits = new List<CombatUnit>();
+        for (int i = 0; i < leftCharIds.Count; i++)
+        {
+            int charId = leftCharIds[i];
+            template = Char_templateConfig.GetTemplate(charId);
+            _leftoCmbatUnits.Add(template == null
+                ? new CombatUnit(new MobAttribute(new CharCreate(leftCharIds[i])), i)
+                : new CombatUnit(CharSystem.Instance.CreateChar(new CharCreate(leftCharIds[i]), false), i));
+            _leftoCmbatUnits.Last().charAttribute.charID = i * 10;
+        }
+        //初始化左边
+        //   EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.InitLeft, true, (object)_leftoCmbatUnits);
+        playerInfo = new CombatTeamInfo(0, TeamType.Player, _leftoCmbatUnits);
+        //创建Npc
+        List<CombatUnit> _rightCombatUnit = new List<CombatUnit>();
+
+        if (npcToggle.isOn)
+        {
+            Mob_mobteam mob = Mob_mobteamConfig.GetMobMobteam(GetInputFieldsValue(npcTeamField));
+            if (mob == null)
+            {
+                return;
+            }
+            int index = 0;
+            foreach (int item in mob.mobList)
+            {
+                int tempid = item;
+                tempid = 9014;
+                _rightCombatUnit.Add(new CombatUnit(new MobAttribute(new CharCreate(tempid)), index, mob.mobTeamID));
+                _rightCombatUnit.Last().charAttribute.charID = index * 10 + 5;
+                index++;
+            }
+        }
+        else
+        {
+            GetCharIds(rightInputFields, rightCharIds);
+            if (rightCharIds.Count == 0)
+            {
+                return;
+            }
+            for (int i = 0; i < rightCharIds.Count; i++)
+            {
+                int charId = rightCharIds[i];
+                template = Char_templateConfig.GetTemplate(charId);
+                _rightCombatUnit.Add(template == null
+                    ? new CombatUnit(new MobAttribute(new CharCreate(rightCharIds[i])), i)
+                    : new CombatUnit(CharSystem.Instance.CreateChar(new CharCreate(rightCharIds[i]), false), i));
+                _rightCombatUnit.Last().charAttribute.charID = i * 10 + 5;
+            }
+        }
+
+
+        enemyInfo = new CombatTeamInfo(1, TeamType.Enemy, _rightCombatUnit);
+        //
+        InitCombt();
+        //
+        combatUiOperation = ResourceLoadUtil.LoadCombatModule();
+        combatUiOperation.transform.localPosition += Vector3.down * 0.48f;
+        //
+        combatUiOperation.Init();
+        combatManager = combatUiOperation.CombatManager;
+    }
+
+    private void GetCharIds(List<InputField> _inputFields, List<int> _chars)
+    {
+        _chars.Clear();
+        foreach (InputField item in _inputFields)
+        {
+            int temp = GetInputFieldsValue(item);
+            if (temp == 0)
+            {
+                continue;
+            }
+
+            _chars.Add(int.Parse(item.text));
+        }
+    }
+
+    private int GetInputFieldsValue(InputField inputField)
+    {
+        return inputField.text.Length == 0 ? 0 : int.Parse(inputField.text);
+    }
+
+
+    /// <summary>
+    /// 战斗阶段事件
+    /// </summary>
+    private void OnCombatStageEvent(PlayCombatStage arg1, object arg2)
+    {
+        switch (arg1)
+        {
+            case PlayCombatStage.CreateCombat:
+                startCombat.gameObject.SetActive(false);
+                break;
+            case PlayCombatStage.Opening:
+                break;
+            case PlayCombatStage.CombatPrepare:
+                break;
+            case PlayCombatStage.CreateRound:
+                //  startCombat.gameObject.SetActive(true);
+                break;
+            case PlayCombatStage.ChooseSkill:
+                break;
+            case PlayCombatStage.ImmediateSkillEffect:
+                break;
+            case PlayCombatStage.RoundInfo:
+                //   startCombat.gameObject.SetActive(false);
+                break;
+            case PlayCombatStage.CombatEnd:
+                break;
+            case PlayCombatStage.InitLeft:
+                break;
+            case PlayCombatStage.InitRight:
+                break;
+            case PlayCombatStage.InitRes:
+                break;
+            case PlayCombatStage.PlayRoundInfoEnd:
+                //   startCombat.gameObject.SetActive(true);
+                break;
+        }
+    }
+    //
+    private Button openButton;
+    private Button closeButton;
+    private Button createButton;
+    private GameObject ui;
+    private CombatSystem combatSystem;
+    private List<int> leftCharIds = new List<int>();
+    private List<int> rightCharIds = new List<int>();
+    //
+    private Button startCombat;
+    //
+    private CharSystem charSystem;
+
+    private UICombatUIOperation combatUiOperation;
+    private CombatManager combatManager;
+}

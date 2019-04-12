@@ -1,0 +1,167 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Barrack.View
+{
+    public class CharList: MonoBehaviour
+    {
+        private GameObject m_charPrefab;
+        private Transform m_parent;
+
+        private Dictionary<int,CharItem> m_dict = new Dictionary<int,CharItem>();
+
+        private CoroutineUtil m_coroutine;
+
+        private void OnDestroy()
+        {
+            StopCortine();
+        }
+
+        private void StopCortine()
+        {
+            if(m_coroutine != null)
+            {
+                if(m_coroutine.Running)
+                {
+                    m_coroutine.Stop();
+                }
+            }
+        }
+
+        public void InitComponent()
+        {
+            m_charPrefab = transform.Find("Scroll/Grid/Char").gameObject;
+            m_charPrefab.SetActive(false);
+            m_parent = transform.Find("Scroll/Grid");
+        }
+
+        //public void InitList(List<CharAttribute> list,Action<CharAttribute> action,bool clickBtn = false)
+        //{
+        //    StopCortine();
+        //    m_coroutine = new CoroutineUtil(InitListInfo(list,action,clickBtn));
+        //}
+
+        public void InitList(List<CharAttribute> list,Action<CharAttribute> handleClick,
+            Action<CharAttribute> sysClick,
+            bool clickBtn = false,bool showRemoveBtn = false)
+        {
+            StopCortine();
+            m_coroutine = new CoroutineUtil(InitListInfo(list,handleClick,sysClick,clickBtn,showRemoveBtn));
+        }
+
+
+        private IEnumerator InitListInfo(List<CharAttribute> list,Action<CharAttribute> handleClick,
+            Action<CharAttribute> sysClick,bool clickBtn = false,bool showRemoveBtn = false)
+        {
+            m_dict.Clear();
+            for(int i = 0; i < list.Count; i++)
+            {
+                GameObject temp = GameObjectPool.Instance.GetObject(
+                    StringDefine.ObjectPooItemKey.CharItem,m_charPrefab);
+
+                Utility.SetParent(temp,m_parent);
+                CharItem charItem = Utility.RequireComponent<CharItem>(temp);
+                m_dict[list[i].charID] = charItem;
+                if(clickBtn && i == 0)
+                {
+                    charItem.InitInfo(list[i],handleClick,sysClick,false,showRemoveBtn);
+                    charItem.SysClick();
+                    charItem.UpdateSelectInfo(true);
+                }
+                else
+                {
+                    charItem.InitInfo(list[i],handleClick,sysClick,false,showRemoveBtn);
+                }
+                if(i > 16)
+                    yield return null;
+            }
+        }
+
+
+        public void InitList(List<CharAttribute> list,Action<CharAttribute> action,
+            Action<CharAttribute> clickRemove)
+        {
+            // m_clickAction = action;
+
+            for(int i = 0; i < list.Count; i++)
+            {
+                GameObject temp = GameObjectPool.Instance.GetObject(
+                    StringDefine.ObjectPooItemKey.CharItem,m_charPrefab);
+
+                Utility.SetParent(temp,m_parent);
+                CharItem charItem = Utility.RequireComponent<CharItem>(temp);
+                charItem.InitInfo(list[i],action,clickRemove);
+                m_dict[list[i].charID] = charItem;
+            }
+        }
+
+        public void SysClick()
+        {
+            CharItem charItem = null;
+            foreach(var item in m_dict)
+            {
+                charItem = item.Value;
+                break;
+            }
+            if(charItem != null)
+                charItem.SysClick();
+        }
+
+
+        public void UpdateCharStatusShow(int charId,CharStatus status)
+        {
+            if(m_dict.ContainsKey(charId))
+                m_dict[charId].UpdateCharStatus(charId,status);
+        }
+
+        public void UpdateCharSelectShow(int charId,bool select)
+        {
+            if(m_dict.ContainsKey(charId))
+                m_dict[charId].UpdateSelectInfo(select);
+        }
+
+
+        public void UpdateManaNotEnoughShowInfo(int charId,bool isWorking)
+        {
+            if(m_dict.ContainsKey(charId))
+                m_dict[charId].UpdateManaNotEnoughShowInfo(isWorking);
+        }
+
+        public void UpdateLevel(int charId,int level)
+        {
+            if(m_dict.ContainsKey(charId))
+                m_dict[charId].UpdateLevel(level);
+        }
+
+        public void UpdateRemoveBtnShow(bool show)
+        {
+            List<int> keys = new List<int>();
+            keys.AddRange(m_dict.Keys);
+            for(int i = 0; i < keys.Count; i++)
+            {
+                m_dict[keys[i]].UpdateRoveShowStatus(show);
+            }
+        }
+
+        public int GetCount()
+        {
+            return m_dict.Count;
+        }
+
+        public void FreeChar(int charId)
+        {
+            if(m_dict.ContainsKey(charId))
+            {
+                GameObjectPool.Instance.FreeGameObjectByObj(StringDefine.ObjectPooItemKey.CharItem,m_dict[charId].gameObject);
+                m_dict.Remove(charId);
+            }
+        }
+
+        public void FreePool()
+        {
+            GameObjectPool.Instance.FreePool(StringDefine.ObjectPooItemKey.CharItem);
+        }
+    }
+}

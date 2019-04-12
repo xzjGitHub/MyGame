@@ -1,0 +1,271 @@
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+using Object = UnityEngine.Object;
+
+public static class Utility
+{
+    public static void SetParent(GameObject obj,object parent = null,bool show = true,object localScale = null,object localPosition = null)
+    {
+        obj.SetActive(show);
+        obj.transform.SetParent(parent is GameObject ? (parent as GameObject).transform : parent as Transform);
+        obj.transform.localScale = localScale == null ? Vector3.one : (Vector3)localScale;
+        obj.transform.localPosition = localPosition == null ? Vector3.zero : (Vector3)localPosition;
+    }
+
+    public static void AddChild(Transform parent,GameObject prefab,Object localScale = null,Object pos = null)
+    {
+        if(prefab != null && parent != null)
+        {
+            prefab.SetActive(true);
+            Transform t = prefab.transform;
+            t.SetParent(parent);
+            Reset(t.transform);
+        }
+    }
+
+    public static Transform Reset(Transform trans)
+    {
+        trans.localScale = Vector3.one;
+        trans.localRotation = Quaternion.identity;
+        trans.localPosition = Vector3.zero;
+        return trans;
+    }
+
+    public static void ClearChild(Transform go)
+    {
+        if(!go) return;
+        List<GameObject> goList = new List<GameObject>();
+        for(int i = 0; i < go.childCount; i++)
+            goList.Add(go.GetChild(i).gameObject);
+
+        go.DetachChildren();
+        for(int i = goList.Count - 1; i >= 0; i--)
+        {
+            Destroy(goList[i]);
+            goList.RemoveAt(i);
+        }
+    }
+
+
+    public static void Destroy(UnityEngine.Object obj)
+    {
+        if(obj != null)
+        {
+            if(Application.isPlaying)
+            {
+                if(obj is GameObject)
+                {
+                    GameObject go = obj as GameObject;
+                    go.transform.SetParent(null);
+                }
+
+                Object.Destroy(obj);
+            }
+            else Object.DestroyImmediate(obj);
+        }
+    }
+
+    public static T RequireComponent<T>(GameObject go) where T : Component
+    {
+        T ret = go.GetComponent<T>();
+        if(ret != null)
+            GameObject.DestroyImmediate(ret);
+        //  if(ret == null)
+        //  {
+        ret = go.AddComponent<T>();
+        //  }
+        return ret;
+    }
+
+    public static void AddButtonListener(Button btn,UnityAction unityAction)
+    {
+        if(btn == null)
+        {
+            LogHelperLSK.LogError("not found btn!");
+            return;
+        }
+        btn.onClick.RemoveAllListeners();
+        btn.onClick.AddListener(unityAction);
+    }
+
+    public static void AddButtonListener(Transform trans,UnityAction unityAction)
+    {
+        AddButtonListener(trans.GetComponent<Button>(),unityAction);
+    }
+
+    public static void AddDoubleClickListener(Transform trans,UnityAction unityAction)
+    {
+        DoubleClick doubleClick = trans.GetComponent<DoubleClick>();
+        if(!doubleClick)
+        {
+            LogHelperLSK.LogError("not found DoubleClick!");
+        }
+        doubleClick.DoubleClickAction = unityAction;
+    }
+
+    public static bool IsPointerOverUI()
+    {
+        if(Application.platform == RuntimePlatform.Android || Application.platform == RuntimePlatform.IPhonePlayer)
+        {
+            if(Input.touchCount > 0 && EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId))
+            {
+                return true;
+            }
+            return false;
+        }
+        if(Input.GetMouseButton(0) && EventSystem.current.IsPointerOverGameObject())
+        {
+            return true;
+        }
+        return false;
+    }
+
+    public static T FindInParents<T>(GameObject go) where T : Component
+    {
+        if(go == null) return null;
+        var comp = go.GetComponent<T>();
+
+        if(comp != null)
+            return comp;
+
+        Transform t = go.transform.parent;
+        while(t != null && comp == null)
+        {
+            comp = t.gameObject.GetComponent<T>();
+            t = t.parent;
+        }
+        return comp;
+    }
+
+    public static string GenerateOnlyId()
+    {
+        return Guid.NewGuid().ToString();
+    }
+
+    public static string GenerateOrderNumber()
+    {
+        string strDateTimeNumber = DateTime.Now.ToString("yyyyMMddHHmmssms");
+        string strRandomResult = NextRandom(1000,1).ToString();
+        return strDateTimeNumber + strRandomResult;
+    }
+
+    private static int NextRandom(int numSeeds,int length)
+    {
+        byte[] randomNumber = new byte[length];
+        System.Security.Cryptography.RNGCryptoServiceProvider rng = new System.Security.Cryptography.RNGCryptoServiceProvider();
+        rng.GetBytes(randomNumber);
+        uint randomResult = 0x0;
+        for(int i = 0; i < length; i++)
+        {
+            randomResult |= ((uint)randomNumber[i] << ((length - 1 - i) * 8));
+        }
+        return (int)(randomResult % numSeeds) + 1;
+    }
+
+    public static int GetIndex(List<int> list,int targetValue)
+    {
+        for(int i = 0; i < list.Count; i++)
+        {
+            if(i == 0)
+            {
+                if(targetValue >= 0 && targetValue < list[i])
+                {
+                    return i;
+                }
+            }
+            else
+            {
+
+                if(targetValue >= list[i - 1] && targetValue < list[i])
+                {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    public static int GetListCount(List<int> list)
+    {
+        int sum = 0;
+        for(int i = 0; i < list.Count; i++)
+        {
+            sum += list[i];
+        }
+        return sum;
+    }
+
+    public static List<int> GetSumList(List<int> list)
+    {
+        List<int> temp = new List<int>();
+        for(int i = 0; i < list.Count; i++)
+        {
+            temp.Add(GetSum(list,i));
+        }
+        return temp;
+    }
+
+    private static int GetSum(List<int> list,int index)
+    {
+        int sum = 0;
+        for(int i = 0; i <= index; i++)
+        {
+            sum += list[i];
+        }
+        return sum;
+    }
+
+    /// <summary>
+    /// 从一个列中 随机取出n个不重复的数
+    /// </summary>
+    /// <param name="targetList">目标列表</param>
+    /// <param name="count">取出的个数</param>
+    /// <returns></returns>
+    public static List<int> GetRandomList(List<int> targetList,int count)
+    {
+        List<int> list = new List<int>();
+        int tempIndex = 1;
+        for(int i = 0; i < count; i++)
+        {
+            int randomIndex = UnityEngine.Random.Range(0,targetList.Count - tempIndex);
+            int value = targetList[randomIndex];
+            list.Add(value);
+
+            int temp = targetList[targetList.Count - tempIndex];
+            targetList[targetList.Count - tempIndex] = value;
+            targetList[randomIndex] = temp;
+            tempIndex++;
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 保留多少个小数点
+    /// </summary>
+    /// <param name="value"></param>
+    /// <param name="numPoint"></param>
+    /// <returns></returns>
+    public static double GetNumberPoint(float value,int numPoint)
+    {
+        double temp = Math.Pow(10,numPoint);
+        int final = (int)(value * temp);
+        double newValue = final / temp;
+        return newValue;
+    }
+
+    public static string GetPercent(float value,int numPoint)
+    {
+        double v = GetNumberPoint(value,numPoint);
+        string s = v * 100 + "%";
+        return s;
+    }
+
+    public static void PlayAnim(Animator animator,string animName)
+    {
+        animator.Play(animName);
+    }
+}

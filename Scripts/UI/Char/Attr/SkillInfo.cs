@@ -1,0 +1,57 @@
+﻿using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace Char.View
+{
+    public class SkillInfo: MonoBehaviour
+    {
+        private GameObject m_prefab;
+        private Transform m_parent;
+
+        private CharAttribute m_charAttr;
+
+        public void InitComponent()
+        {
+            m_prefab = transform.Find("Grid/SkillItem").gameObject;
+            m_prefab.SetActive(false);
+            m_parent = transform.Find("Grid");
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="skillIdList"></param>
+        /// <param name="attr"></param>
+        /// <param name="skillType">1 基本技能 2被动技能</param>
+        public void UpdateInfo(List<int> skillIdList,CharAttribute attr)
+        {
+            m_charAttr = attr;
+            for(int i = 0; i < skillIdList.Count; i++)
+            {
+                GameObject obj = GameObjectPool.Instance.GetObject(StringDefine.ObjectPooItemKey.SkillItem,m_prefab);
+                Utility.SetParent(obj,m_parent);
+
+                int skillId = skillIdList[i];
+                Combatskill_template skill = Combatskill_templateConfig.GetCombatskill_template(skillId);
+                if(skill == null)
+                {
+                    Debug.LogError("技能为空：" + skillId);
+                    continue;
+                }
+                obj.transform.Find("Icon").GetComponent<Image>().sprite = ResourceLoadUtil.LoadSprite(ResourceType.SkillIcon,skill.skillIcon);
+
+                GameObject tip = obj.transform.Find("Tip").gameObject;
+                tip.SetActive(false);
+
+                SkillTipInfo tipInfo = Utility.RequireComponent<SkillTipInfo>(tip.transform.Find("SkillTipInfo").gameObject);
+                GameObject btn = obj.transform.Find("Btn").gameObject;
+                Utility.AddButtonListener(obj.transform.Find("Btn"),() =>
+                {
+                    tip.SetActive(true);
+                    tipInfo.UpdateInfo(skillId,m_charAttr);
+                });
+            }
+        }
+    }
+}

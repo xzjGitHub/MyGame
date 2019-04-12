@@ -1,0 +1,547 @@
+﻿using GameEventDispose;
+using MCCombat;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+/// <summary>
+/// 战斗系统_额外计算
+/// </summary>
+public partial class CombatSystem
+{
+    /// <summary>
+    /// 现在回合
+    /// </summary>
+    public int NowRound { get { return nowRound; } }
+    public float CurrentPower { get { return playerTeamInfo.CurrentEnergy; } }
+    public float MaxEnergy { get { return playerTeamInfo.MaxPower; } }
+
+    private List<CombatTeamInfo> combatTeams = new List<CombatTeamInfo>();
+
+    public CombatSystem(int enemyTeamID)
+    {
+        InitCreate();
+        //
+        try
+        {
+            enemyBaseTeamInitiative = Mob_mobteamConfig.GetMobMobteam(enemyTeamID).baseTeamInitiative;
+        }
+        catch (Exception)
+        {
+            LogHelperLSK.LogError("npc队伍=" + enemyTeamID);
+            throw;
+        }
+
+    }
+
+    public CombatSystem()
+    {
+        enemyBaseTeamInitiative = 0;
+        InitCreate();
+    }
+
+    private void InitCreate()
+    {
+        isTestSkill = false;
+        object combatSystem = GameModules.Find(ModuleName.combatSystem);
+        if (combatSystem != null)
+        {
+            ((CombatSystem)combatSystem).OnDestroy();
+        }
+        instance = this;
+        victoryTeamId = -1;
+        nowRound = 0;
+        //初始化能量
+        combat_Config = Combat_configConfig.GetCombat_config();
+        energyRecovery = combat_Config.baseEnergyReg;
+        //
+        GameModules.RemoveModule(ModuleName.combatSystem);
+        //
+        GameModules.AddModule(ModuleName.combatSystem, this);
+        EventDispatcher.Instance.CombatEvent.AddEventListener<CombatStage, object>(EventId.CombatEvent, OnCombatEvent);
+    }
+
+    /// <summary>
+    /// 战斗事件
+    /// </summary>
+    private void OnCombatEvent(CombatStage arg1, object arg2)
+    {
+        combatStage = arg1;
+        switch (arg1)
+        {
+            case CombatStage.CreateCombat: //创建战斗
+                combatTeams.Clear();
+                combatTeams.Add(((CombatTeamInfo[])arg2)[0]);
+                combatTeams.Add(((CombatTeamInfo[])arg2)[1]);
+                CreateCombat(combatTeams[0], combatTeams[1]);
+                CombatPrepare();
+                //
+                // LogHelperLSK.LogError("战斗测试添加FinalEncourage=100");
+                foreach (CombatTeamInfo item in combatTeams)
+                {
+                    foreach (CombatUnit unit in item.combatUnits)
+                    {
+                        unit.charAttribute.SetFinalEncourage(100);
+                    }
+                }
+                playerTeamInfo.AddEnergy(50);
+                //  LogHelperLSK.LogError("战斗测试添加Energy=50");
+                //todo 暂时移除卡片机制
+                //创建新卡
+                //   CreateClassSkill(true);
+                //
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.CreateCombat, (object)enemyTeamInfo);
+                //
+                break;
+            case CombatStage.Opening:
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.Opening, (object)null);
+                break;
+            case CombatStage.CombatPrepare:
+                //
+                playerTeamInfo.SetHealingTag(0, nowRound);
+                enemyTeamInfo.SetHealingTag(0, nowRound);
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.CombatPrepare, (object)this);
+                break;
+            case CombatStage.ChooseSkill:
+                //更新角色使用职业技能
+                OnChooseSkill(arg2 as PlayerSkillInfo);
+                //
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.ChooseSkill, arg2);
+                break;
+            case CombatStage.CreateRound:
+                //添加战斗单元
+                ResetCombatUnits();
+                //清空上个回合添加的
+                foreach (CombatUnit item in allCombatUnit)
+                {
+                    item.tempArmor = 0;
+                    item.tempShield = 0;
+                }
+                //更新技能冷却        __重置激励标签
+                if (nowRound > 0)
+                {
+                    UpdateUnitSkillUseRound(allCombatUnit);
+                }
+                nowRound++;
+                //添加能量
+                RecoverEnergy();
+                //清除已选择的手动技能
+                InitSelectSkill();
+                //补卡
+                //  CreateClassSkill();
+                //重置治疗标签
+                ResetHealingTag();
+                List<CRImmediateShowEffect> effects = new List<CRImmediateShowEffect>();
+                //进入暂停时间时，自动恢复、更新所有角色被加载的constant和aura状态、恢复护盾和护甲
+                foreach (CombatUnit item in allCombatUnit)
+                {
+                    effects.AddRange(AutoRecoveryShieldArmor(item, nowRound));
+                    UpdateCombatStateDuration(item, new List<StateType> { StateType.Constant, StateType.Aura, StateType.SuperImpulse });
+                }
+                //立即显示效果
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.ImmediateShow, (object)effects);
+                //重置威胁标签
+                foreach (CombatUnit item in enemyTeamInfo.combatUnits)
+                {
+                    item.highThreat = 0;
+                }
+                //预选目标
+                PrimaryTargets();
+                //
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.CreateRound, (object)combatTeams);
+                break;
+            case CombatStage.StartRound:
+                //用于界面战斗测试
+                isTestSkill = false;
+
+                OnUseManualSkill(arg2 as List<UseManualSkillInfo>);
+                //if (arg2 != null)
+                //{
+                //    object[] _obj = arg2 as object[];
+                //    isTestSkill = (bool)_obj[0];
+                //    playerUseSkills = (List<int>)_obj[1];
+                //    enemyUseSkills = (List<int>)_obj[2];
+                //}
+                //开始战斗回合
+                OnStartCombatRound();
+                break;
+            case CombatStage.CombatEnd:
+                EventDispatcher.Instance.CombatEvent.RemoveEventListener<CombatStage, object>(EventId.CombatEvent, OnCombatEvent);
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.CombatEnd, (object)(victoryTeamId == playerTeamInfo.teamId));
+                break;
+            case CombatStage.AbandonSkill:
+                //更新角色使用职业技能
+                UseClassSkill(arg2 as PlayerSkillInfo);
+                break;
+            case CombatStage.UseManualSkill:
+                //更新角色使用职业技能
+                //OnUseManualSkill(arg2 as List<PlayerSkillInfo>);
+                OnUseManualSkill(arg2 as List<UseManualSkillInfo>);
+                break;
+            case CombatStage.UseCommonSkill:
+                break;
+            case CombatStage.RoundEnd:
+                CombatRound combatRound = arg2 as CombatRound;
+                OnRoundEnd();
+                //
+                EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.RoundEnd, (object)combatRound);
+                break;
+        }
+    }
+
+    public void Win()
+    {
+        CombatRound combatRound = new CombatRound
+        {
+            combatResult =
+            {
+                victoryTeam = 0,
+                isEnd = true
+            }
+        };
+        victoryTeamId = 0;
+        //
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.RoundInfo, (object)combatRound);
+    }
+
+    public void Loser()
+    {
+        CombatRound combatRound = new CombatRound
+        {
+            combatResult =
+            {
+                victoryTeam = 1,
+                isEnd = true
+            }
+        };
+        victoryTeamId = 1;
+        //
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.RoundInfo, (object)combatRound);
+    }
+    /// <summary>
+    /// 选择了技能
+    /// </summary>
+    /// <param name="skillInfo"></param>
+    private void OnChooseSkill(PlayerSkillInfo skillInfo)
+    {
+        //区分是否立即生效
+        switch (skillInfo.castType)
+        {
+            case 0:
+            case 1:
+                AddSelectSkill(skillInfo);
+                break;
+            case 2:
+                UseImmediateSkillInfo(skillInfo);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 重置战斗单元
+    /// </summary>
+    private void ResetCombatUnits()
+    {
+        allCombatUnit.Clear();
+        allCombatUnit.AddRange(playerTeamInfo.combatUnits);
+        allCombatUnit.AddRange(enemyTeamInfo.combatUnits);
+    }
+
+    /// <summary>
+    /// 恢复能量
+    /// </summary>
+    private void RecoverEnergy()
+    {
+        if (!playerTeamInfo.combatUnits[0].isMob)
+        {
+            playerTeamInfo.AddEnergy(playerTeamInfo.combatUnits.Sum(a => a.charAttribute.finalEnergyReg) + energyRecovery);
+        }
+     
+        if (!enemyTeamInfo.combatUnits[0].isMob)
+        {
+            enemyTeamInfo.AddEnergy(enemyTeamInfo.combatUnits.Sum(a => a.charAttribute.finalEnergyReg) + energyRecovery);
+        }
+     
+    }
+
+    /// <summary>
+    /// 重置治疗标签
+    /// </summary>
+    private void ResetHealingTag()
+    {
+        List<CombatUnit> temp = playerTeamInfo.combatUnits.FindAll(a => a.hp > 0).OrderBy(b => b.initIndex).ToList();
+        playerTeamInfo.combatHealingTag.Reset(nowRound, temp[0].initIndex);
+        temp = enemyTeamInfo.combatUnits.FindAll(a => a.hp > 0).OrderBy(b => b.initIndex).ToList();
+        enemyTeamInfo.combatHealingTag.Reset(nowRound, temp[0].initIndex);
+    }
+
+    /// <summary>
+    /// 创建战斗
+    /// </summary>
+    /// <param name="_playerTeamInfo">玩家队伍信息</param>
+    /// <param name="_enemyTeamInfo">敌方队伍信息</param>
+    private void CreateCombat(CombatTeamInfo _playerTeamInfo, CombatTeamInfo _enemyTeamInfo)
+    {
+        Init();
+        //
+        playerTeamInfo = _playerTeamInfo;
+        enemyTeamInfo = _enemyTeamInfo;
+        ResetCombatUnits();
+    }
+    /// <summary>
+    /// 战斗准备
+    /// </summary>
+    private void CombatPrepare()
+    {
+        //得到先攻队伍
+        initiativeTeamId = GetTeamInitiativeTeamId();
+        //初始化己方战术、被动技能
+        InitCombatTeamSkillOperation(playerTeamInfo.combatUnits);
+        //初始化敌方战术、被动技能
+        InitCombatTeamSkillOperation(enemyTeamInfo.combatUnits);
+    }
+    /// <summary>
+    /// 使用立即生效技能
+    /// </summary>
+    /// <param name="info"></param>
+    private void UseImmediateSkillInfo(PlayerSkillInfo info)
+    {
+        if (info == null)
+        {
+            return;
+        }
+        //得到角色使用技能的 info
+        CombatTeamInfo teamInfo = GetTeamInfo(info.teamID);
+        CombatUnit combatUnit = teamInfo.combatUnits.Find(a => a.charAttribute.charID == info.charID && a.initIndex == info.charIndex);
+        CSkillInfo skillInfo = combatUnit.commonSkills.Find(b => b.ID == info.skillId);
+        //检查技能是否存在
+        if (skillInfo == null)
+        {
+            return;
+        }
+        //检查能量是否充足
+        if (teamInfo.CurrentEnergy < skillInfo.ManaCost)
+        {
+            return;
+        }
+        //更新能量
+        teamInfo.UseEnergy((int)skillInfo.ManaCost);
+        //
+        List<CRExtraUseSkill> extras = new List<CRExtraUseSkill>();
+        List<CRTargetInfo> cRTargetInfos = UseImmediateSkill(skillInfo, combatUnit, out extras, true);
+        for (int i = 0; i < extras.Count; i++)
+        {
+            cRTargetInfos.AddRange(UseImmediateSkill(skillInfo, combatUnit, out extras, false));
+        }
+        //
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.ImmediateSkillEffect, (object)cRTargetInfos);
+    }
+
+    /// <summary>
+    /// 开始战斗回合
+    /// </summary>
+    private void OnStartCombatRound()
+    {
+        //新建回合信息
+        CombatRound combatRound = new CombatRound { roundId = nowRound, };
+        //
+        combatRound.combatRoundUnits.AddRange(allCombatUnit);
+        if (IsCombatEnd() && !isTestSkill)
+        {
+            return;
+        }
+        //开始回合信息
+        List<RoundActionInfo> list = InitUnitActionSort();
+        //初始化战斗行动序列
+        foreach (RoundActionInfo item in list)
+        {
+            item.combatUnit.nowActionCount++;
+            //todo 行动前更新状态___特殊类型的状态卸载
+            CombatUnitStateUpdate(item.combatUnit, combatRound);
+            if (!CombatSystemTool.IsCanAction(item.combatUnit))
+            {
+                continue;
+            }
+            //检测当前角色是否死亡
+            if (!isTestSkill && item.combatUnit.hp <= 0)
+            {
+                continue;
+            }
+            //战斗是否结束
+            if (!isTestSkill && IsCombatEnd())
+            {
+                break;
+            }
+            //
+            CombatUnitUseSkill(item, combatRound);
+        }
+        if (isTestSkill)
+        {
+            for (int i = 0; i < playerTeamInfo.combatUnits.Count; i++)
+            {
+                playerTeamInfo.combatUnits[i].hp = playerTeamInfo.combatUnits[i].maxHp;
+            }
+            for (int i = 0; i < enemyTeamInfo.combatUnits.Count; i++)
+            {
+                enemyTeamInfo.combatUnits[i].hp = enemyTeamInfo.combatUnits[i].maxHp;
+            }
+        }
+        //状态更新完成
+        foreach (RoundActionInfo item in list)
+        {
+            item.combatUnit.UpdateSateInfo(false);
+        }
+        //添加角色信息
+        combatRound.combatCharInfos = GetCombatUnitInfos();
+        //添加战斗结果
+        if (IsCombatEnd(combatRound.combatResult))
+        {
+            victoryTeamId = combatRound.combatResult.victoryTeam;
+            combatRound.combatResult.isEnd = true;
+        }
+        //检查Buff
+        OnCheckBuff(combatRound);
+        //
+        EventDispatcher.Instance.CombatEvent.DispatchEvent(EventId.CombatEvent, PlayCombatStage.RoundInfo, (object)combatRound);
+    }
+
+    /// <summary>
+    /// 回合结束
+    /// </summary>
+    private List<CRRemoveState> OnRoundEnd()
+    {
+        return new List<CRRemoveState>();
+        List<CRRemoveState> removeStates = new List<CRRemoveState>();
+        //进入暂停时间时，更新所有角色被加载的constant和aura状态、恢复护盾和护甲
+        foreach (CombatUnit item in allCombatUnit)
+        {
+            AutoRecoveryShieldArmor(item, nowRound);
+            UpdateCombatStateDuration(item, new List<StateType> { StateType.Constant, StateType.Aura, StateType.SuperImpulse });
+        }
+
+        return removeStates;
+    }
+    /// <summary>
+    /// 检查buff
+    /// </summary>
+    /// <param name="combatRound"></param>
+    private void OnCheckBuff(CombatRound combatRound)
+    {
+        return;
+        combatRound.combatRoundResults.Add(new CombatRoundResult(CommandResultType.CheckBuff)
+        {
+            removeStates = OnRoundEnd(),
+        });
+    }
+
+    /// <summary>
+    /// 初始化选择技能
+    /// </summary>
+    private void InitSelectSkill()
+    {
+        playerSelects.Clear();
+        enemySelects.Clear();
+    }
+
+    /// <summary>
+    /// 使用手动技能
+    /// </summary>
+    /// <param name="skillInfos"></param>
+    private void OnUseManualSkill(List<PlayerSkillInfo> skillInfos)
+    {
+        foreach (PlayerSkillInfo item in skillInfos)
+        {
+            AddSelectSkill(item);
+        }
+    }
+
+    /// <summary>
+    /// 使用手动技能
+    /// </summary>
+    /// <param name="skillInfos"></param>
+    private void OnUseManualSkill(List<UseManualSkillInfo> skillInfos)
+    {
+        playerSelecteManualSkills = skillInfos;
+        //foreach (UseManualSkillInfo item in skillInfos)
+        //{
+        //    AddSelectSkill(item);
+        //}
+    }
+
+
+    /// <summary>
+    /// 添加手动选择的技能
+    /// </summary>
+    /// <param name="skillInfo"></param>
+    private void AddSelectSkill(PlayerSkillInfo skillInfo)
+    {
+        switch (GetTeamInfo(skillInfo.teamID).teamType)
+        {
+            case TeamType.Player:
+                UpdateSelectInfo(playerSelects, skillInfo);
+                break;
+            case TeamType.Enemy:
+                UpdateSelectInfo(enemySelects, skillInfo);
+                break;
+            case TeamType.Thirdparty:
+                break;
+        }
+    }
+    /// <summary>
+    /// 添加手动选择的技能
+    /// </summary>
+    /// <param name="skillInfo"></param>
+    private void AddSelectSkill(UseManualSkillInfo skillInfo)
+    {
+
+        // UpdateSelectInfo(playerSelects, skillInfo);
+    }
+
+
+
+    /// <summary>
+    /// 更新选择技能信息
+    /// </summary>
+    /// <param name="skills"></param>
+    /// <param name="skillInfo"></param>
+    private void UpdateSelectInfo(List<PlayerSkillInfo> skills, PlayerSkillInfo skillInfo)
+    {
+        PlayerSkillInfo info = skills.Find(a => a.charID == skillInfo.charID && a.charIndex == skillInfo.charIndex);
+        skills.Add(skillInfo);
+        //替换已有的
+        if (info != null)
+        {
+            skills.Remove(info);
+        }
+        for (int i = 0; i < skills.Count; i++)
+        {
+            skills[i].SetSelectIndex(i);
+        }
+    }
+    /// <summary>
+    /// 销毁
+    /// </summary>
+    private void OnDestroy()
+    {
+        //
+        GameModules.RemoveModule(ModuleName.combatSystem);
+        EventDispatcher.Instance.CombatEvent.RemoveEventListener<CombatStage, object>(EventId.CombatEvent, OnCombatEvent);
+    }
+
+
+    //
+    private CombatStage combatStage;
+    /// <summary>
+    /// 现在回合
+    /// </summary>
+    private int nowRound;
+    private int victoryTeamId;
+    private Combat_config combat_Config;
+    public bool isTestSkill = false;
+    private List<int> playerUseSkills = new List<int>();
+    private List<int> enemyUseSkills = new List<int>();
+    //选择的技能
+    private List<PlayerSkillInfo> playerSelects = new List<PlayerSkillInfo>();
+    private List<UseManualSkillInfo> playerSelecteManualSkills = new List<UseManualSkillInfo>();
+    private List<PlayerSkillInfo> enemySelects = new List<PlayerSkillInfo>();
+}
