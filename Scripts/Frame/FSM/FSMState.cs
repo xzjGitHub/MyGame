@@ -1,0 +1,141 @@
+﻿using System.Collections.Generic;
+
+namespace GameFSM
+{
+    public delegate void FSMStateDelegate();
+    public delegate void FSMStateDelegateState(IState state);
+    public delegate void FSMStateDelegateFloat(float time);
+
+    public class FSMState: IState
+    {
+        private string m_stateName;
+        private string m_tag;
+        private float m_timer;
+        private IStateMachine m_parent;
+
+        private List<ITransition> m_allTransition;
+
+        public event FSMStateDelegateState OnEnterEvent;
+        public event FSMStateDelegateState OnExitEvent;
+        public event FSMStateDelegateFloat OnUpdateEvent;
+        public event FSMStateDelegateFloat OnLateUpdateEvent;
+        public event FSMStateDelegate OnFixedUpdateEvent;
+
+        public string StateName
+        {
+            get { return m_stateName; }
+        }
+
+        public string StateTag
+        {
+            get { return m_tag; }
+            set { m_tag = value; }
+        }
+
+        public IStateMachine Parent
+        {
+            get { return m_parent; }
+            set { m_parent = value; }
+        }
+
+        public FSMState()
+        {
+        }
+
+        public FSMState(string name)
+        {
+            m_stateName = name;
+            m_allTransition = new List<ITransition>();
+        }
+
+        public FSMState(string name,IStateMachine parent)
+        {
+            m_stateName = name;
+            m_parent = parent;
+            m_allTransition = new List<ITransition>();
+        }
+
+        public float Timer
+        {
+            get { return m_timer; }
+        }
+
+        public List<ITransition> AllTransition
+        {
+            get { return m_allTransition; }
+        }
+
+
+        public void AddTransition(ITransition transition)
+        {
+            if(transition != null && !m_allTransition.Contains(transition))
+            {
+                m_allTransition.Add(transition);
+            }
+        }
+
+        public void RemoveTransition(ITransition transition)
+        {
+            if(transition != null && m_allTransition.Contains(transition))
+            {
+                m_allTransition.Remove(transition);
+            }
+        }
+
+        public virtual void OnEnter(IState preState)
+        {
+            if(OnEnterEvent != null)
+            {
+                OnEnterEvent(preState);
+            }
+        }
+
+        public virtual void OnUpdate(float delaTime)
+        {
+            m_timer += delaTime;
+            if(OnUpdateEvent != null)
+            {
+                OnUpdateEvent(delaTime);
+            }
+        }
+
+        public virtual void OnLateUpdate(float delaTime)
+        {
+            if(OnLateUpdateEvent != null)
+            {
+                OnLateUpdateEvent(delaTime);
+            }
+        }
+
+        public virtual void OnFixedUpdate()
+        {
+            if(OnFixedUpdateEvent != null)
+            {
+                OnFixedUpdateEvent();
+            }
+        }
+
+        public virtual void OnExit(IState nextState)
+        {
+            m_timer = 0;
+            if(OnExitEvent != null)
+            {
+                OnExitEvent(nextState);
+            }
+        }
+
+        public void Reset()
+        {
+            m_stateName = string.Empty;
+            m_tag = string.Empty;
+            m_timer = 0;
+            int allCount = m_allTransition.Count;
+            for(int i = 0; i < allCount; i++)
+            {
+                m_allTransition[i].Reset();
+            }
+            m_allTransition.Clear();
+            m_parent = null;
+        }
+    }
+}

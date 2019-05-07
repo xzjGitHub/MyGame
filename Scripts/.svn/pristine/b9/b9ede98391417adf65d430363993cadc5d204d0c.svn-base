@@ -1,0 +1,165 @@
+﻿using System.Collections.Generic;
+
+namespace GameFSM
+{
+    public enum TransitionStatus
+    {
+        None,
+        Begin,
+        Transitioning,
+        End
+    }
+
+    /// <summary>
+    /// 状态机 继承FSMState 它既是一个状态机又是一个状态 可用于实现子状态机
+    /// </summary>
+    public class FSMStateMachine: FSMState, IStateMachine
+    {
+        private TransitionStatus m_transitionStatus;    //过渡状态
+        private IState m_currentState;                  //当前状态
+        private IState m_defaultState;                  //默认状态
+        private ITransition m_currentTransition;        //当前正在执行的过渡
+
+        private List<IState> m_allState;                //所有的状态
+
+        public IState CurrentState
+        {
+            get { return m_currentState; }
+        }
+
+        public IState DefaultState
+        {
+            get { return m_defaultState; }
+            set
+            {
+                AddState(value);
+                m_defaultState = value;
+                m_currentState = value;
+               // m_transitionStatus = TransitionStatus.Begin;
+            }
+        }
+
+        public FSMStateMachine() { }
+
+        public FSMStateMachine(string name) : base(name)
+        {
+            m_allState = new List<IState>();
+            m_defaultState = null;
+            m_currentState = m_defaultState;
+            m_transitionStatus = TransitionStatus.None;
+        }
+
+        public FSMStateMachine(string name,IState defaultState) : base(name)
+        {
+            m_allState = new List<IState>();
+            m_defaultState = defaultState;
+            m_currentState = m_defaultState;
+            m_transitionStatus = TransitionStatus.None;
+        }
+
+        public void AddState(IState state)
+        {
+            if(state != null && !m_allState.Contains(state))
+            {
+                m_allState.Add(state);
+                //设置新加入的状态的父状态机为当前状态机
+                state.Parent = this;
+                if(m_defaultState == null)
+                {
+                    m_defaultState = state;
+                }
+            }
+        }
+
+        public void RemoveState(IState state)
+        {
+            //状态机运行过程中 不能删除
+            if(m_currentState == state)
+            {
+                return;
+            }
+
+            if(state != null && m_allState.Contains(state))
+            {
+                m_allState.Remove(state);
+                //所属状态机设置为空
+                state.Parent = null;
+                if(m_defaultState == state)
+                {
+                    m_defaultState = m_allState.Count >= 1 ? m_allState[0] : null;
+                }
+            }
+        }
+
+        public IState GetState(string tag)
+        {
+            return null;
+        }
+
+        public override void OnUpdate(float delaTime)
+        {
+            if(m_transitionStatus ==TransitionStatus.Begin)
+            {
+                m_transitionStatus = TransitionStatus.Transitioning;
+            }
+            if (m_transitionStatus == TransitionStatus.Transitioning)
+            {
+                //检测过渡是否完成
+                if(m_currentTransition.TransitionCallBack())
+                {
+                    DoTransition(m_currentTransition);
+                    m_transitionStatus = TransitionStatus.End;
+                }
+                else
+                {
+                    //如果正在过渡 直接返回
+                    return;
+                }
+            }
+            base.OnUpdate(delaTime);
+            for(int i = 0; i < m_currentState.AllTransition.Count; i++)
+            {
+                if(m_currentState.AllTransition[i].ShouldBeginTransition())
+                {
+                    m_transitionStatus = TransitionStatus.Begin;
+                    m_currentTransition = m_currentState.AllTransition[i];
+                    return;
+                }
+            }
+            m_currentState.OnUpdate(delaTime);
+        }
+
+        public override void OnLateUpdate(float delaTime)
+        {
+            base.OnLateUpdate(delaTime);
+            m_currentState.OnLateUpdate(delaTime);
+        }
+
+        public override void OnFixedUpdate()
+        {
+            base.OnFixedUpdate();
+            m_currentState.OnFixedUpdate();
+        }
+
+        private void DoTransition(ITransition transition)
+        {
+            m_currentState.OnExit(transition.To);
+            m_currentState = transition.To;
+            m_currentState.OnEnter(transition.From);
+        }
+
+        public void ResetMachine()
+        {
+            base.Reset();
+            m_transitionStatus = TransitionStatus.None;
+            m_currentState.Reset();
+            m_defaultState.Reset();
+            for (int i = 0; i < m_allState.Count; i++)
+            {
+                m_allState[i].Reset();
+            }
+            m_allState.Clear();
+        }
+    }
+}
+

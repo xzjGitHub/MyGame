@@ -1,0 +1,28 @@
+﻿using GameFSM;
+using UnityEngine;
+
+namespace GameFsmMachine
+{
+    public class FightState: FSMState
+    {
+        public FightState(string name) : base(name) { }
+
+        public override void OnEnter(IState preState)
+        {
+          //  LogHelperLSK.LogError("进入FightState");
+            base.OnEnter(preState);
+
+            LodingPanel loding = UIPanelManager.Instance.Show<LodingPanel>(CavasType.PopUI);
+            loding.action = () => { ResourceLoadUtil.LoadExploreModule1(); };
+            loding.PlayCloseAnim();
+        }
+
+        public override void OnExit(IState nextState)
+        {
+          //  LogHelperLSK.LogError("退出FightState");
+            base.OnExit(nextState);
+            Resources.UnloadUnusedAssets();
+            System.GC.Collect();
+        }
+    }
+}

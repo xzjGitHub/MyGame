@@ -1,0 +1,84 @@
+﻿using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using GameFSM;
+
+public class MyTest: MonoBehaviour
+{
+
+    private FSMStateMachine FSMStateMachine;
+    private FSMState m_idle;
+    private FSMState m_move;
+
+    private FSMTransition m_idleMove;
+    private FSMTransition m_moveIdle;
+
+    private bool IsMove;
+    private bool IsEnd;
+
+    private void Start()
+    {
+        m_idle = new FSMState("idle");
+        m_idle.OnEnterEvent += (IState state) => { Debug.Log("进入idle状态"); };
+
+        m_move = new FSMState("move");
+        m_move.OnEnterEvent += (IState state) =>
+        {
+            Debug.Log("进入move状态");
+            
+        };
+
+        m_move.OnUpdateEvent += (float time) =>
+        {
+          //  Debug.Log("进入move状态");
+            transform.position += transform.forward*time*1;
+        };
+
+        m_idleMove = new FSMTransition("idleMove", m_idle, m_move);
+        m_idleMove.OnCheck += () =>
+        {
+            return IsMove;
+        };
+        m_idleMove.OnTransition += () =>
+        {
+            return IsEnd;
+        };
+        m_idle.AddTransition(m_idleMove);
+        
+
+        m_moveIdle = new FSMTransition("moveIdle", m_move, m_idle);
+        m_moveIdle.OnCheck += () =>
+        {
+            return !IsMove;
+        };
+        m_move.AddTransition(m_moveIdle);
+
+        FSMStateMachine = new FSMStateMachine("root",m_idle);
+        FSMStateMachine.AddState(m_move);
+    }
+
+    private void Update()
+    {
+        FSMStateMachine.OnUpdate(Time.deltaTime);
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            IsEnd = true;
+            Debug.LogError("aaa");
+        }
+
+    }
+
+    private void OnGUI()
+    {
+        if (GUILayout.Button("移动"))
+        {
+            IsMove = true;
+        }
+
+        if(GUILayout.Button("停止"))
+        {
+            IsMove = false;
+            IsEnd = false;
+        }
+    }
+}

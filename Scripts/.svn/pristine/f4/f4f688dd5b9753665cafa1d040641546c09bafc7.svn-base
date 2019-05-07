@@ -1,0 +1,79 @@
+﻿using EventCenter;
+using GameFSM;
+
+namespace GameFsmMachine
+{
+    public class GameFsmManager: Singleton<GameFsmManager>
+    {
+        private GameFsmType m_currentType;
+        public GameFsmType CurrType { get { return m_currentType; } }
+
+        private FSMStateMachine m_fsm;
+
+        private bool m_isFront;
+        public bool IsFrontBack { get { return m_isFront; } }
+
+        private GameFsmManager()
+        {
+            m_currentType = GameFsmType.StartGame;
+
+            EventManager.Instance.RegEventListener<GameFsmType>(EventSystemType.FSM,EventTypeNameDefine.UpdateFsm,UpdateCurrentType);
+            EventManager.Instance.RegEventListener<bool>(EventSystemType.FSM,EventTypeNameDefine.UpdateIsFront,UpdateIsFront);
+
+            Init();
+        }
+
+        private void Init()
+        {
+            m_fsm = new FSMStateMachine(GameFsmStateNameDefine.GameFsm);
+
+            FSMState defaults = new FSMState(GameFsmStateNameDefine.Defaults);
+            StartGameState startGame = new StartGameState(GameFsmStateNameDefine.StartGameState);
+            InitScriptState initSc = new InitScriptState(GameFsmStateNameDefine.InitScriptState);
+            FrontState front = new FrontState(GameFsmStateNameDefine.FrontState);
+            MainSceneState main = new MainSceneState(GameFsmStateNameDefine.MainSceneState);
+            FightState fight = new FightState(GameFsmStateNameDefine.FightState);
+
+            defaults.AddTransition(new DefaultStateToStartGame(TrisitionNameDefine.DefaultStateToStartGame,defaults,startGame));
+            startGame.AddTransition(new StartGameStateToInitScriptState(TrisitionNameDefine.StartGameStateToInitScriptState,startGame,initSc));
+            initSc.AddTransition(new InitScriptStateToFront(TrisitionNameDefine.InitScriptStateToFront,initSc,front));
+            initSc.AddTransition(new InitScriptToMain(TrisitionNameDefine.InitScriptToMain,initSc,main));
+            main.AddTransition(new MainToFight(TrisitionNameDefine.MainToFight,main,fight));
+            main.AddTransition(new MainToStart(TrisitionNameDefine.MainToStart,main,startGame));
+            fight.AddTransition(new FightToMain(TrisitionNameDefine.FightToMain,fight,main));
+
+            m_fsm.AddState(defaults);
+            m_fsm.AddState(startGame);
+            m_fsm.AddState(initSc);
+            m_fsm.AddState(front);
+            m_fsm.AddState(main);
+            m_fsm.AddState(fight);
+
+            m_fsm.DefaultState = defaults;
+        }
+
+
+        private void UpdateCurrentType(GameFsmType type)
+        {
+            m_currentType = type;
+        }
+
+        private void UpdateIsFront(bool isFront)
+        {
+            m_isFront = isFront;
+        }
+
+        public void Update(float time)
+        {
+            m_fsm.OnUpdate(time);
+        }
+
+        public void Reset()
+        {
+            EventManager.Instance.UnRegEventListener<GameFsmType>(EventSystemType.UI,EventTypeNameDefine.UpdateFsm,UpdateCurrentType);
+            EventManager.Instance.UnRegEventListener<bool>(EventSystemType.UI,EventTypeNameDefine.UpdateIsFront,UpdateIsFront);
+            m_fsm.Reset();
+
+        }
+    }
+}
