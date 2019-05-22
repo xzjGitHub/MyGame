@@ -1,0 +1,166 @@
+﻿using System;
+using UnityEngine;
+using UnityEngine.UI;
+using DG.Tweening;
+using System.Collections.Generic;
+using I2.TextAnimation;
+
+public partial class FrontPanel: UIPanelBehaviour
+{
+    private GameObject m_info1;
+    private GameObject m_info2;
+
+    private GameObject m_tag1;
+    private GameObject m_head;
+    private GameObject m_point;
+    private GameObject m_desObj;
+
+    private Text m_des;
+
+    [HideInInspector]
+    public Action CloseCallBack;
+
+    private bool m_showEnd;
+    private bool m_hasClick;
+    private bool m_desShowEnd;
+
+    private int m_showGuoDuCpunt;
+
+    private Script_intro m_intro;
+
+    private DOTweenAnimation m_mapAnim;
+    private DOTweenAnimation m_bgAnim;
+    private DOTweenAnimation m_desAnim;
+
+    private TextAnimation m_textAnimdes;
+
+    private TextAnimation m_guoDuAnim;
+
+    private MutiTextAnim m_mutilAnimText;
+
+    private Animator m_animtor;
+
+    protected override void OnShow(List<object> parmers = null)
+    {
+        m_intro = Script_introConfig.GetScript_intro();
+
+        m_info1 = transform.Find("Info1").gameObject;
+        m_info1.SetActive(true);
+        m_info2 = transform.Find("Info2").gameObject;
+        m_info2.SetActive(false);
+
+        m_tag1 = transform.Find("Info1/Tag1").gameObject;
+        m_tag1.SetActive(false);
+        m_head = transform.Find("Info1/Head").gameObject;
+        m_head.SetActive(false);
+        m_point = transform.Find("Info1/Point").gameObject;
+        m_point.SetActive(false);
+        m_desObj = transform.Find("Info1/Des").gameObject;
+        m_desObj.SetActive(false);
+
+        m_des = transform.Find("Info1/Des/Des").GetComponent<Text>();
+        m_des.text = "";
+
+        m_mutilAnimText = transform.Find("Info2/GuoDu").GetComponent<MutiTextAnim>();
+        List<string> list = new List<string>();
+        list.Add(Text_templateConfig.GetText_config(m_intro.introText3[0]).text);
+        list.Add(Text_templateConfig.GetText_config(m_intro.introText3[1]).text);
+        m_mutilAnimText.InitAllText(list,null,() =>
+        {
+            m_showEnd = true;
+
+        });
+
+        m_animtor = gameObject.GetComponent<Animator>();
+
+        m_mapAnim = transform.Find("Info1/Map").GetComponent<DOTweenAnimation>();
+        m_bgAnim = transform.Find("Info1/Des/Image").GetComponent<DOTweenAnimation>();
+        m_desAnim = transform.Find("Info1/Des").GetComponent<DOTweenAnimation>();
+
+        m_textAnimdes = transform.Find("Info1/Des/Des").GetComponent<TextAnimation>();
+        TextAnimationEx desEx = m_textAnimdes.GetComponent<TextAnimationEx>();
+        desEx.ComplateCall = () =>
+          {
+              m_desAnim.DOPlay();
+              m_desShowEnd = true;
+          };
+
+        //地图
+        DoTweenPlayCallBack m_mapCallInfo = transform.Find("Info1/Map").GetComponent<DoTweenPlayCallBack>();
+        m_mapCallInfo.ComplateCall = () =>
+        {
+            m_desObj.SetActive(true);
+            m_bgAnim.DOPlay();
+        };
+
+        //整个Des
+        DoTweenPlayCallBack m_desCallInfo = transform.Find("Info1/Des").GetComponent<DoTweenPlayCallBack>();
+        m_desCallInfo.ComplateCall = () =>
+        {
+           // m_tag1.SetActive(true);
+           // m_head.SetActive(true);
+           // m_point.SetActive(true);
+
+            m_animtor.SetBool("Play",true);
+        };
+
+        //描述的背景
+        DoTweenPlayCallBack m_bgCallInfo = transform.Find("Info1/Des/Image").GetComponent<DoTweenPlayCallBack>();
+        m_bgCallInfo.ComplateCall = () =>
+        {
+            m_des.text = Text_templateConfig.GetText_config(m_intro.introText1).text;
+            m_textAnimdes.PlayAnim();
+        };
+
+        Utility.AddButtonListener(transform.Find("Btn"),Click);
+
+        m_mapAnim.DOPlay();
+    }
+
+    private void Click()
+    {
+        if(!m_desShowEnd)
+        {
+            return;
+        }
+
+        if(!m_head.activeSelf)
+            return;
+
+        if(m_info1.activeSelf && ScriptSystem.Instance.ScriptPhase == ScriptPhase.Front)
+        {
+            m_info1.SetActive(false);
+            m_info2.SetActive(true);
+            m_mutilAnimText.AutoShowNext();
+            return;
+        }
+
+        if(!m_showEnd && ScriptSystem.Instance.ScriptPhase == ScriptPhase.Front)
+        {
+            m_mutilAnimText.Click();
+            return;
+        }
+
+        if(m_info2.activeSelf && ScriptSystem.Instance.ScriptPhase == ScriptPhase.Front && m_intro.introDialog1 > 0)
+        {
+            gameObject.SetActive(false);
+            DiaLogPanel dia = UIPanelManager.Instance.Show<DiaLogPanel>(CavasType.Three,
+                new System.Collections.Generic.List<object> { m_intro.introDialog1 });
+            dia.CloseCallBack = Close;
+            return;
+        }
+
+        if(!m_hasClick)
+        {
+            Close();
+            m_hasClick = true;
+        }
+    }
+
+    private void Close()
+    {
+        CloseCallBack();
+        UIPanelManager.Instance.Hide<FrontPanel>();
+    }
+}
+

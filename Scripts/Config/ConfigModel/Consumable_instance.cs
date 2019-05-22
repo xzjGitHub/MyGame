@@ -47,7 +47,7 @@ public partial class Consumable_instance : IReader
     /// <summary>
     /// 
     /// </summary>
-    public float baseRewardLevel;
+    public List<float> baseRewardLevel;
     /// <summary>
     /// 
     /// </summary>
@@ -76,7 +76,14 @@ public partial class Consumable_instance : IReader
             try { itemRewardSet.Add(int.Parse(_str)); }
             catch (Exception) { }
         }
-        baseRewardLevel = float.Parse(array[3]);
+        //列表baseRewardLevel取值
+        array[3] = array[3].Replace("[", "").Replace("]", "").Replace(" ","");
+        baseRewardLevel = new List<float>();
+        foreach (var _str in array[3].Split(','))
+        {
+            try { baseRewardLevel.Add(float.Parse(_str)); }
+            catch (Exception) { }
+        }
         //列表itemCost取值
         array[4] = array[4].Replace("[", "").Replace("]", "").Replace(" ","");
         itemCost = new   List<List<int>>();
